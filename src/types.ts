@@ -91,6 +91,8 @@ export interface VideoClip {
 }
 
 export type SpectrumMode = 'digital' | 'analog';
+export type SpectrumBand = 'all' | 'bass' | 'mid' | 'treble';
+export type SpectrumShape = 'mirror' | 'bottom' | 'dots' | 'line';
 
 export interface VisualEffectsConfig {
   hologramEnabled: boolean;
@@ -98,8 +100,27 @@ export interface VisualEffectsConfig {
   spectrumEnabled: boolean;
   spectrumMode: SpectrumMode;
   spectrumOpacity: number; // 0.05 ~ 1.0
+  spectrumBand?: SpectrumBand;
+  spectrumHeight?: number; // 0.06 ~ 0.45
+  spectrumWidth?: number; // 0.25 ~ 1.0
+  spectrumColor?: string; // 'auto' | hex
+  spectrumThickness?: number; // 0.4 ~ 2.4
+  spectrumShape?: SpectrumShape;
+  spectrumSmoothing?: number; // 0 ~ 0.92
   lyricLedMeterEnabled?: boolean;
 }
+
+export const DEFAULT_SPECTRUM_SETTINGS = {
+  spectrumMode: 'digital' as SpectrumMode,
+  spectrumOpacity: 0.65,
+  spectrumBand: 'all' as SpectrumBand,
+  spectrumHeight: 0.18,
+  spectrumWidth: 0.72,
+  spectrumColor: 'auto',
+  spectrumThickness: 1.0,
+  spectrumShape: 'mirror' as SpectrumShape,
+  spectrumSmoothing: 0.72,
+};
 
 export type TextTransitionType =
   | 'none'

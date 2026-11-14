@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Music,
   Palette,
+  RotateCcw,
   Save,
   SaveAll,
   Sliders,
@@ -31,8 +32,11 @@ import { ensureBundledFontsLoaded } from './fonts/fonts';
 import {
   AspectRatio,
   BackgroundMedia,
+  DEFAULT_SPECTRUM_SETTINGS,
   LyricSegment,
+  SpectrumBand,
   SpectrumMode,
+  SpectrumShape,
   SubtitleStylePreset,
   TextLayer,
   UpdateCheckResult,
@@ -233,8 +237,26 @@ export function App() {
     hologramEnabled: initialSettings.visualEffects?.hologramEnabled ?? true,
     hologramOpacity: initialSettings.visualEffects?.hologramOpacity ?? 0.38,
     spectrumEnabled: initialSettings.visualEffects?.spectrumEnabled ?? true,
-    spectrumMode: initialSettings.visualEffects?.spectrumMode ?? 'digital',
-    spectrumOpacity: initialSettings.visualEffects?.spectrumOpacity ?? 0.65,
+    spectrumMode:
+      initialSettings.visualEffects?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
+    spectrumOpacity:
+      initialSettings.visualEffects?.spectrumOpacity ?? DEFAULT_SPECTRUM_SETTINGS.spectrumOpacity,
+    spectrumBand:
+      initialSettings.visualEffects?.spectrumBand ?? DEFAULT_SPECTRUM_SETTINGS.spectrumBand,
+    spectrumHeight:
+      initialSettings.visualEffects?.spectrumHeight ?? DEFAULT_SPECTRUM_SETTINGS.spectrumHeight,
+    spectrumWidth:
+      initialSettings.visualEffects?.spectrumWidth ?? DEFAULT_SPECTRUM_SETTINGS.spectrumWidth,
+    spectrumColor:
+      initialSettings.visualEffects?.spectrumColor ?? DEFAULT_SPECTRUM_SETTINGS.spectrumColor,
+    spectrumThickness:
+      initialSettings.visualEffects?.spectrumThickness ??
+      DEFAULT_SPECTRUM_SETTINGS.spectrumThickness,
+    spectrumShape:
+      initialSettings.visualEffects?.spectrumShape ?? DEFAULT_SPECTRUM_SETTINGS.spectrumShape,
+    spectrumSmoothing:
+      initialSettings.visualEffects?.spectrumSmoothing ??
+      DEFAULT_SPECTRUM_SETTINGS.spectrumSmoothing,
     lyricLedMeterEnabled: initialSettings.visualEffects?.lyricLedMeterEnabled ?? true,
   });
   const [spectrumBins, setSpectrumBins] = useState<Uint8Array | null>(null);
@@ -937,18 +959,6 @@ export function App() {
       return [...sorted, newClip];
     });
     setSelectedClipId(clipId);
-
-    setBackground((prev) =>
-      prev ?? {
-        filePath,
-        name,
-        mediaType,
-        url,
-        kenBurns: true,
-        dimOpacity: 0,
-        blurAmount: 0,
-      }
-    );
   };
 
   const handleOpenBackground = async (mode: 'append' | 'insert' = 'append') => {
@@ -2095,25 +2105,232 @@ export function App() {
                           ))}
                         </div>
 
+                        {/* 음역대 */}
+                        <div>
+                          <div className="mb-1 text-[11px] text-slate-400">음역대</div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {(
+                              [
+                                { id: 'all', label: '전체' },
+                                { id: 'bass', label: '저음' },
+                                { id: 'mid', label: '중음' },
+                                { id: 'treble', label: '고음' },
+                              ] as Array<{ id: SpectrumBand; label: string }>
+                            ).map((b) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() =>
+                                  setVisualEffects((v) => ({ ...v, spectrumBand: b.id }))
+                                }
+                                className={`rounded-md py-1 text-[11px] font-medium ${
+                                  (visualEffects.spectrumBand ?? 'all') === b.id
+                                    ? 'bg-cyan-500 text-slate-950'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {b.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 모양 */}
+                        <div>
+                          <div className="mb-1 text-[11px] text-slate-400">모양</div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {(
+                              [
+                                { id: 'mirror', label: '대칭' },
+                                { id: 'bottom', label: '하단' },
+                                { id: 'dots', label: '도트' },
+                                { id: 'line', label: '라인' },
+                              ] as Array<{ id: SpectrumShape; label: string }>
+                            ).map((s) => (
+                              <button
+                                key={s.id}
+                                type="button"
+                                onClick={() =>
+                                  setVisualEffects((v) => ({ ...v, spectrumShape: s.id }))
+                                }
+                                className={`rounded-md py-1 text-[11px] font-medium ${
+                                  (visualEffects.spectrumShape ?? 'mirror') === s.id
+                                    ? 'bg-cyan-500 text-slate-950'
+                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                }`}
+                              >
+                                {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 움직임 둔화(부드러움) */}
                         <div>
                           <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                            <span>스펙트럼 투명도</span>
-                            <span>{Math.round(visualEffects.spectrumOpacity * 100)}%</span>
+                            <span>움직임 부드러움 (둔화)</span>
+                            <span>
+                              {Math.round((visualEffects.spectrumSmoothing ?? 0.72) * 100)}%
+                            </span>
                           </div>
                           <input
                             type="range"
-                            min={0.05}
-                            max={1}
-                            step={0.05}
-                            value={visualEffects.spectrumOpacity}
+                            min={0}
+                            max={0.92}
+                            step={0.04}
+                            value={visualEffects.spectrumSmoothing ?? 0.72}
                             onChange={(e) =>
                               setVisualEffects((v) => ({
                                 ...v,
-                                spectrumOpacity: Number(e.target.value),
+                                spectrumSmoothing: Number(e.target.value),
                               }))
                             }
                             className="w-full accent-cyan-400"
                           />
+                        </div>
+
+                        {/* 높이 & 너비 */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>높이</span>
+                              <span>
+                                {Math.round((visualEffects.spectrumHeight ?? 0.18) * 100)}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.06}
+                              max={0.45}
+                              step={0.01}
+                              value={visualEffects.spectrumHeight ?? 0.18}
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  spectrumHeight: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>너비</span>
+                              <span>
+                                {Math.round((visualEffects.spectrumWidth ?? 0.72) * 100)}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.25}
+                              max={1}
+                              step={0.01}
+                              value={visualEffects.spectrumWidth ?? 0.72}
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  spectrumWidth: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 굵기 & 투명도 */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>굵기</span>
+                              <span>
+                                {Math.round((visualEffects.spectrumThickness ?? 1) * 100)}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.4}
+                              max={2.4}
+                              step={0.1}
+                              value={visualEffects.spectrumThickness ?? 1}
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  spectrumThickness: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>투명도</span>
+                              <span>{Math.round(visualEffects.spectrumOpacity * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.05}
+                              max={1}
+                              step={0.05}
+                              value={visualEffects.spectrumOpacity}
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  spectrumOpacity: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 색상 & 기본값 되돌리기 */}
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400">색상</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVisualEffects((v) => ({ ...v, spectrumColor: 'auto' }))
+                              }
+                              className={`rounded px-2 py-1 text-[10px] font-medium ${
+                                (visualEffects.spectrumColor ?? 'auto') === 'auto'
+                                  ? 'bg-cyan-500 text-slate-950'
+                                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              }`}
+                            >
+                              자동 그라데이션
+                            </button>
+                            <input
+                              type="color"
+                              value={
+                                (visualEffects.spectrumColor ?? 'auto') === 'auto'
+                                  ? '#38bdf8'
+                                  : visualEffects.spectrumColor
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  spectrumColor: e.target.value,
+                                }))
+                              }
+                              title="스펙트럼 단색 지정"
+                              className="h-6 w-8 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisualEffects((v) => ({
+                                ...v,
+                                ...DEFAULT_SPECTRUM_SETTINGS,
+                              }))
+                            }
+                            className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] text-slate-300 hover:bg-slate-700"
+                            title="오디오 스펙트럼 설정을 기본값으로 되돌립니다"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            기본값 되돌리기
+                          </button>
                         </div>
                       </>
                     )}

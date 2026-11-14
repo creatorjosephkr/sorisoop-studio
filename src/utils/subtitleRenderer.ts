@@ -8,6 +8,11 @@ import {
   VisualEffectsConfig,
 } from '../types';
 
+const spectrumSmoothMap = new WeakMap<
+  CanvasRenderingContext2D,
+  { bins: Float32Array; samples: Float32Array }
+>();
+
 export interface RenderFrameParams {
   ctx: CanvasRenderingContext2D;
   width: number;
@@ -679,45 +684,149 @@ export function renderMusicVideoFrame({
     ctx.restore();
   }
 
-  // 1-B. 화면 가운데 오디오 스펙트럼 (디지털 / 아날로그 + 투명도)
+  // 1-B. 화면 가운데 오디오 스펙트럼 (음역대 / 높이 / 너비 / 색상 / 굵기 / 모양 / 움직임 둔화)
   if (!transparentBackground && visualEffects?.spectrumEnabled) {
-    const bins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
+    const rawBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
+    const band = visualEffects.spectrumBand ?? 'all';
+    const heightRatio = Math.max(0.06, Math.min(0.45, visualEffects.spectrumHeight ?? 0.18));
+    const widthRatio = Math.max(0.25, Math.min(1, visualEffects.spectrumWidth ?? 0.72));
+    const customColor = visualEffects.spectrumColor ?? 'auto';
+    const thickness = Math.max(0.4, Math.min(2.4, visualEffects.spectrumThickness ?? 1.0));
+    const shape = visualEffects.spectrumShape ?? 'mirror';
+    const smoothing = Math.max(0, Math.min(0.92, visualEffects.spectrumSmoothing ?? 0.72));
+
+    // 선택 음역대 슬라이싱
+    let bandStart = 0;
+    let bandEnd = rawBins.length;
+    if (band === 'bass') {
+      bandStart = 0;
+      bandEnd = Math.max(8, Math.floor(rawBins.length * 0.34));
+    } else if (band === 'mid') {
+      bandStart = Math.floor(rawBins.length * 0.16);
+      bandEnd = Math.max(bandStart + 8, Math.floor(rawBins.length * 0.68));
+    } else if (band === 'treble') {
+      bandStart = Math.floor(rawBins.length * 0.5);
+      bandEnd = rawBins.length;
+    }
+    const bandLen = Math.max(4, bandEnd - bandStart);
+
+    // 시간축 스무딩(움직임 둔화)
+    let smoothEntry = spectrumSmoothMap.get(ctx);
+    if (!smoothEntry || smoothEntry.bins.length !== rawBins.length) {
+      smoothEntry = {
+        bins: new Float32Array(rawBins.length),
+        samples: new Float32Array(160),
+      };
+      spectrumSmoothMap.set(ctx, smoothEntry);
+    }
+    const keep = smoothing;
+    const take = 1 - keep;
+    for (let i = 0; i < rawBins.length; i++) {
+      smoothEntry.bins[i] = smoothEntry.bins[i] * keep + rawBins[i] * take;
+    }
+
+    const bins = smoothEntry.bins.subarray(bandStart, bandStart + bandLen);
     const binCount = bins.length;
-    const specWidth = width * 0.72;
+    const specWidth = width * widthRatio;
     const startX = (width - specWidth) / 2;
     const centerY = height / 2;
-    const maxAmp = height * 0.18;
+    const maxAmp = height * heightRatio;
 
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.spectrumOpacity));
 
     if (visualEffects.spectrumMode === 'digital') {
       const slotW = specWidth / binCount;
-      const barW = Math.max(3 * baseScale, slotW * 0.66);
-      const grad = ctx.createLinearGradient(startX, centerY - maxAmp, startX, centerY + maxAmp);
-      grad.addColorStop(0, '#67e8f9');
-      grad.addColorStop(0.5, '#818cf8');
-      grad.addColorStop(1, '#67e8f9');
-      ctx.fillStyle = grad;
-      ctx.shadowColor = '#38bdf8';
+      const barW = Math.max(2 * baseScale, Math.min(slotW * 0.92, slotW * 0.62 * thickness));
+
+      if (customColor !== 'auto') {
+        ctx.fillStyle = customColor;
+        ctx.strokeStyle = customColor;
+        ctx.shadowColor = customColor;
+      } else {
+        const grad = ctx.createLinearGradient(startX, centerY - maxAmp, startX, centerY + maxAmp);
+        grad.addColorStop(0, '#67e8f9');
+        grad.addColorStop(0.5, '#818cf8');
+        grad.addColorStop(1, '#67e8f9');
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = grad;
+        ctx.shadowColor = '#38bdf8';
+      }
       ctx.shadowBlur = 12 * baseScale;
 
-      for (let i = 0; i < binCount; i++) {
-        const norm = bins[i] / 255;
-        const h = Math.max(4 * baseScale, norm * maxAmp);
-        const x = startX + i * slotW + (slotW - barW) / 2;
+      if (shape === 'line') {
+        const lineStep = specWidth / Math.max(1, binCount - 1);
+        ctx.lineWidth = Math.max(1.5, 3 * baseScale * thickness);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         ctx.beginPath();
-        ctx.roundRect(x, centerY - h, barW, h * 2, barW / 2);
-        ctx.fill();
+        for (let i = 0; i < binCount; i++) {
+          const norm = bins[i] / 255;
+          const x = startX + i * lineStep;
+          const y = centerY - Math.max(2 * baseScale, norm * maxAmp);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        ctx.beginPath();
+        for (let i = 0; i < binCount; i++) {
+          const norm = bins[i] / 255;
+          const x = startX + i * lineStep;
+          const y = centerY + Math.max(2 * baseScale, norm * maxAmp);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      } else {
+        for (let i = 0; i < binCount; i++) {
+          const norm = bins[i] / 255;
+          const h = Math.max(4 * baseScale, norm * maxAmp);
+          const x = startX + i * slotW + (slotW - barW) / 2;
+          if (shape === 'dots') {
+            const r = Math.max(2 * baseScale, barW * 0.48);
+            ctx.beginPath();
+            ctx.arc(x + barW / 2, centerY - h, r, 0, Math.PI * 2);
+            ctx.arc(x + barW / 2, centerY + h, r, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (shape === 'bottom') {
+            const baseY = centerY + maxAmp * 0.65;
+            const barH = Math.max(4 * baseScale, norm * maxAmp * 1.45);
+            ctx.beginPath();
+            ctx.roundRect(x, baseY - barH, barW, barH, barW / 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.roundRect(x, centerY - h, barW, h * 2, barW / 2);
+            ctx.fill();
+          }
+        }
       }
     } else {
-      // 실제 시간 영역 오디오 파형(오실로스코프) + 음 높이/진폭에 따른 초록 -> 노랑 -> 빨강 색상 변화
-      const samples =
+      // 아날로그 (웨이브): 선택 음역대 에너지 + 시간축 스무딩 반영
+      const rawSamples =
         waveformSamples && waveformSamples.length > 0 ? waveformSamples : null;
-      const pointCount = samples ? samples.length : Math.max(32, binCount);
+      const pointCount = rawSamples ? rawSamples.length : Math.max(32, binCount);
+      if (smoothEntry.samples.length !== pointCount) {
+        smoothEntry.samples = new Float32Array(pointCount);
+      }
+
+      let bandEnergy = 0;
+      for (let i = 0; i < binCount; i++) bandEnergy += bins[i] / 255;
+      bandEnergy /= Math.max(1, binCount);
+      const bandGain = band === 'all' ? 1 : Math.min(1.6, 0.35 + bandEnergy * 2.2);
+
+      const sampleKeep = Math.min(0.85, smoothing * 0.85);
+      const sampleTake = 1 - sampleKeep;
+      if (rawSamples) {
+        for (let i = 0; i < pointCount; i++) {
+          smoothEntry.samples[i] =
+            smoothEntry.samples[i] * sampleKeep + rawSamples[i] * bandGain * sampleTake;
+        }
+      }
+
       const stepX = specWidth / Math.max(1, pointCount - 1);
 
-      // 스펙트럼 무게중심(Spectral Centroid: 저음=0 -> 고음=1) 계산
       let weightedSum = 0;
       let totalMag = 0;
       for (let i = 0; i < binCount; i++) {
@@ -726,49 +835,78 @@ export function renderMusicVideoFrame({
         totalMag += mag;
       }
       const centroid = totalMag > 0.01 ? Math.min(1, (weightedSum / totalMag) * 1.8) : 0;
-      // 120(초록) -> 60(노랑) -> 0(빨강)
       const peakHue = Math.round(Math.max(0, 120 - centroid * 120));
 
-      const analogMaxAmp = height * 0.32;
-      const waveGrad = ctx.createLinearGradient(0, centerY - analogMaxAmp, 0, centerY + analogMaxAmp);
-      waveGrad.addColorStop(0.0, '#ef4444'); // 높은 피크: 붉은색
-      waveGrad.addColorStop(0.25, '#f97316'); // 주황
-      waveGrad.addColorStop(0.5, `hsl(${peakHue}, 85%, 52%)`); // 중앙: 음 높이에 따라 초록~빨강
-      waveGrad.addColorStop(0.75, '#f97316'); // 주황
-      waveGrad.addColorStop(1.0, '#ef4444'); // 높은 피크: 붉은색
+      const analogMaxAmp = maxAmp * 1.65;
+      if (customColor !== 'auto') {
+        ctx.strokeStyle = customColor;
+        ctx.fillStyle = customColor;
+        ctx.shadowColor = customColor;
+      } else {
+        const waveGrad = ctx.createLinearGradient(
+          0,
+          centerY - analogMaxAmp,
+          0,
+          centerY + analogMaxAmp
+        );
+        waveGrad.addColorStop(0.0, '#ef4444');
+        waveGrad.addColorStop(0.25, '#f97316');
+        waveGrad.addColorStop(0.5, `hsl(${peakHue}, 85%, 52%)`);
+        waveGrad.addColorStop(0.75, '#f97316');
+        waveGrad.addColorStop(1.0, '#ef4444');
+        ctx.strokeStyle = waveGrad;
+        ctx.fillStyle = waveGrad;
+        ctx.shadowColor = centroid > 0.55 ? '#ef4444' : '#22c55e';
+      }
 
-      ctx.lineWidth = 3.6 * baseScale;
+      ctx.lineWidth = 3.4 * baseScale * thickness;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = waveGrad;
-      ctx.shadowColor = centroid > 0.55 ? '#ef4444' : '#22c55e';
       ctx.shadowBlur = 13 * baseScale;
 
       const getSampleY = (idx: number): number => {
-        if (samples) {
-          const val = Math.max(-1, Math.min(1, samples[idx] * 2.8));
+        if (rawSamples) {
+          const val = Math.max(-1, Math.min(1, smoothEntry!.samples[idx] * 2.6));
           return centerY + val * analogMaxAmp;
         }
         const norm = bins[idx % binCount] / 255;
         return centerY + (idx % 2 === 0 ? 1 : -1) * norm * analogMaxAmp * 0.75;
       };
 
-      ctx.beginPath();
-      let prevX = startX;
-      let prevY = getSampleY(0);
-      ctx.moveTo(prevX, prevY);
+      if (shape === 'dots') {
+        const dotR = Math.max(2 * baseScale, 3.2 * baseScale * thickness);
+        for (let i = 0; i < pointCount; i += 2) {
+          ctx.beginPath();
+          ctx.arc(startX + i * stepX, getSampleY(i), dotR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.beginPath();
+        let prevX = startX;
+        let prevY = getSampleY(0);
+        ctx.moveTo(prevX, prevY);
 
-      for (let i = 1; i < pointCount; i++) {
-        const x = startX + i * stepX;
-        const y = getSampleY(i);
-        const midX = (prevX + x) / 2;
-        const midY = (prevY + y) / 2;
-        ctx.quadraticCurveTo(prevX, prevY, midX, midY);
-        prevX = x;
-        prevY = y;
+        for (let i = 1; i < pointCount; i++) {
+          const x = startX + i * stepX;
+          const y = getSampleY(i);
+          const midX = (prevX + x) / 2;
+          const midY = (prevY + y) / 2;
+          ctx.quadraticCurveTo(prevX, prevY, midX, midY);
+          prevX = x;
+          prevY = y;
+        }
+        const lastX = startX + (pointCount - 1) * stepX;
+        ctx.lineTo(lastX, getSampleY(pointCount - 1));
+        ctx.stroke();
+
+        if (shape === 'bottom') {
+          ctx.lineTo(lastX, centerY + analogMaxAmp * 0.7);
+          ctx.lineTo(startX, centerY + analogMaxAmp * 0.7);
+          ctx.closePath();
+          ctx.globalAlpha = Math.max(0.03, Math.min(0.45, visualEffects.spectrumOpacity * 0.4));
+          ctx.fill();
+        }
       }
-      ctx.lineTo(startX + (pointCount - 1) * stepX, getSampleY(pointCount - 1));
-      ctx.stroke();
     }
     ctx.restore();
   }
