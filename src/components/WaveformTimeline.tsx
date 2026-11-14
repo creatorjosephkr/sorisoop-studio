@@ -620,8 +620,6 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       onSelectSegment(clickedSeg);
       return;
     }
-
-    onSeek(t);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -672,10 +670,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     }
   };
 
-  const handleMouseUpOrLeave = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (dragRef.current?.mode === 'move' && !dragRef.current.moved) {
-      onSeek(getTimeFromClientX(e.clientX));
-    }
+  const handleMouseUpOrLeave = () => {
     dragRef.current = null;
     setSnapGuideTime(null);
     setHoverCursor('pointer');
@@ -988,12 +983,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   return (
                     <div
                       key={layer.id}
-                      onClick={(e) => {
-                        if (timelineDuration <= 0) return;
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                        onSeek(ratio * timelineDuration);
-                      }}
+                      onClick={() => onSelectTextLayer(null)}
                       className="relative h-8 border-b border-slate-800 bg-slate-950/90"
                     >
                       <div className="pointer-events-none absolute top-0.5 left-1.5 z-10 flex items-center gap-1 text-[9px] font-semibold text-violet-300/65">
@@ -1140,11 +1130,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
             {/* 영상 트랙 (오디오 트랙 위) */}
             <div
               ref={videoTrackRef}
-              onClick={(e) => {
-                if (timelineDuration <= 0) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                onSeek(ratio * timelineDuration);
+              onClick={() => {
                 onSelectClip(null);
                 setEditingTransClipId(null);
               }}
