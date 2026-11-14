@@ -116,12 +116,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setProgressPct(0);
       setStatusMsg('저장 위치를 선택하고 FFmpeg 인코더를 준비 중...');
 
+      const prefixedBase = baseName.startsWith('MASTER_') ? baseName : `MASTER_${baseName}`;
       const startRes = await window.electronAPI.startVideoExport({
         width,
         height,
         fps,
         audioPath,
-        defaultFileName: isMovAlpha ? `${baseName}_lyrics_alpha.mov` : `${baseName}_mv.mp4`,
+        defaultFileName: isMovAlpha
+          ? `${prefixedBase}_lyrics_alpha.mov`
+          : `${prefixedBase}_mv.mp4`,
         format: exportFormat,
       });
 

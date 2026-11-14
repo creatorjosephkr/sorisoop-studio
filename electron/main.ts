@@ -665,12 +665,34 @@ ipcMain.handle(
       args.push('-i', audioPath);
     }
 
+    const appVersion = app.getVersion();
+    const appTitle = `소리숲 뮤직비디오 스튜디오 (SoriSoop MV Studio) v${appVersion}`;
+    const appAuthor = '크리에이터요셉 (creatorjosephkr)';
+    const metadataArgs = [
+      '-metadata',
+      `encoding_tool=${appTitle}`,
+      '-metadata',
+      `software=${appTitle}`,
+      '-metadata',
+      `com.apple.quicktime.software=${appTitle}`,
+      '-metadata',
+      `artist=${appAuthor}`,
+      '-metadata',
+      `author=${appAuthor}`,
+      '-metadata',
+      `com.apple.quicktime.author=${appAuthor}`,
+      '-metadata',
+      `copyright=Copyright © 2026 ${appAuthor}`,
+      '-metadata',
+      `comment=Created with ${appTitle} by ${appAuthor}`,
+    ];
+
     if (isMovAlpha) {
       args.push('-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le');
       if (audioPath && fs.existsSync(audioPath)) {
         args.push('-c:a', 'pcm_s16le', '-shortest');
       }
-      args.push(outputPath);
+      args.push(...metadataArgs, '-movflags', 'use_metadata_tags', outputPath);
     } else {
       const encoder = await detectBestVideoEncoder(ffmpegPath);
       const targetBitrate = height >= 1080 ? '14M' : '8M';
@@ -699,7 +721,7 @@ ipcMain.handle(
       if (audioPath && fs.existsSync(audioPath)) {
         args.push('-c:a', 'aac', '-b:a', '192k', '-shortest');
       }
-      args.push('-movflags', '+faststart', outputPath);
+      args.push(...metadataArgs, '-movflags', '+faststart+use_metadata_tags', outputPath);
     }
 
     const proc = spawn(ffmpegPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
