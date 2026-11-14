@@ -21,7 +21,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { LyricSegment, TextLayer, TextTransitionType, TransitionType, VideoClip } from '../types';
+import { AppTheme, LyricSegment, TextLayer, TextTransitionType, TransitionType, VideoClip } from '../types';
 import {
   DEFAULT_TEXT_TRANSITION_DURATION,
   DEFAULT_TRANSITION_DURATION,
@@ -74,6 +74,7 @@ interface WaveformTimelineProps {
   onUpdateTextLayer: (id: string, patch: Partial<TextLayer>) => void;
   onDeleteTextLayer: (id: string) => void;
   onSplitTextLayer?: (id: string, splitTime: number) => void;
+  appTheme?: AppTheme;
 }
 
 function formatTime(sec: number): string {
@@ -126,6 +127,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   onUpdateTextLayer,
   onDeleteTextLayer,
   onSplitTextLayer,
+  appTheme = 'default',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -507,11 +509,22 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     const height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    ctx.fillStyle = '#070b19';
+    const isLight = appTheme === 'light-gray' || appTheme === 'white';
+    const canvasBg =
+      appTheme === 'white'
+        ? '#f8fafc'
+        : appTheme === 'light-gray'
+          ? '#e2e8f0'
+          : appTheme === 'dark-gray'
+            ? '#141417'
+            : '#070b19';
+    const emptyTextColor = isLight ? '#334155' : '#94a3b8';
+
+    ctx.fillStyle = canvasBg;
     ctx.fillRect(0, 0, width, height);
 
     if (timelineDuration <= 0) {
-      ctx.fillStyle = '#475569';
+      ctx.fillStyle = emptyTextColor;
       ctx.font = '13px "Sorisoop-Pretendard"';
       ctx.textAlign = 'center';
       ctx.fillText('노래 음원 파일을 업로드하면 파형이 표시됩니다.', width / 2, height / 2);
@@ -525,15 +538,25 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       const isSelected = seg.id === selectedSegmentId;
       const isActive = currentTime >= seg.startTime && currentTime <= seg.endTime;
 
-      ctx.fillStyle = isSelected
-        ? 'rgba(56, 189, 248, 0.30)'
-        : isActive
-          ? 'rgba(56, 189, 248, 0.18)'
-          : 'rgba(99, 102, 241, 0.13)';
+      ctx.fillStyle = isLight
+        ? isSelected
+          ? 'rgba(14, 165, 233, 0.22)'
+          : isActive
+            ? 'rgba(14, 165, 233, 0.14)'
+            : 'rgba(99, 102, 241, 0.10)'
+        : isSelected
+          ? 'rgba(56, 189, 248, 0.30)'
+          : isActive
+            ? 'rgba(56, 189, 248, 0.18)'
+            : 'rgba(99, 102, 241, 0.13)';
       ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
 
       // 시작/끝 경계 드래그 핸들 라인
-      ctx.fillStyle = isSelected ? '#22d3ee' : 'rgba(129, 140, 248, 0.7)';
+      ctx.fillStyle = isSelected
+        ? isLight
+          ? '#0284c7'
+          : '#22d3ee'
+        : 'rgba(129, 140, 248, 0.7)';
       ctx.fillRect(x1, 0, isSelected ? 2.5 : 1.5, height);
       ctx.fillRect(x2 - (isSelected ? 2.5 : 1.5), 0, isSelected ? 2.5 : 1.5, height);
     }
@@ -548,11 +571,11 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         const barH = Math.max(2, amp * (height * 0.78));
         const x = i * barWidth;
         const t = (i / peaks.length) * duration;
-        ctx.fillStyle = t <= currentTime ? '#38bdf8' : '#4f46e5';
+        ctx.fillStyle = t <= currentTime ? (isLight ? '#0284c7' : '#38bdf8') : '#4f46e5';
         ctx.fillRect(x, midY - barH / 2, Math.max(1, barWidth - 0.5), barH);
       }
     } else if (duration <= 0) {
-      ctx.fillStyle = '#475569';
+      ctx.fillStyle = emptyTextColor;
       ctx.font = '12px "Sorisoop-Pretendard"';
       ctx.textAlign = 'center';
       ctx.fillText('노래 음원 파일을 업로드하면 파형이 표시됩니다.', width / 2, height / 2);
@@ -562,7 +585,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     const playX = (currentTime / timelineDuration) * width;
     ctx.fillStyle = '#f43f5e';
     ctx.fillRect(playX - 1, 0, 2, height);
-  }, [peaks, duration, timelineDuration, currentTime, segments, selectedSegmentId, zoom]);
+  }, [peaks, duration, timelineDuration, currentTime, segments, selectedSegmentId, zoom, appTheme]);
 
   const getTimeFromClientX = (clientX: number): number => {
     const canvas = canvasRef.current;
@@ -1137,7 +1160,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               className="relative h-14 border-b border-slate-800 bg-slate-950/90"
             >
               {videoClips.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-[11px] text-slate-600">
+                <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
                   배경 영상 또는 사진(기본 5초 · 150프레임)을 추가하면 영상 트랙이 표시됩니다
                 </div>
               ) : (

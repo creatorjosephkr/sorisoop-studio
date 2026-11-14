@@ -269,6 +269,7 @@ export function App() {
     } else {
       document.documentElement.setAttribute('data-theme', appTheme);
     }
+    void window.electronAPI?.setAppTheme?.(appTheme);
   }, [appTheme]);
 
   useEffect(() => {
@@ -1565,7 +1566,7 @@ export function App() {
           <button
             type="button"
             onClick={handleNewProject}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
           >
             <FilePlus className="h-3.5 w-3.5 text-amber-300" />
             새로 만들기
@@ -1575,7 +1576,7 @@ export function App() {
             <button
               type="button"
               onClick={() => void handleSaveProject(false)}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
+              className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
               title={
                 currentProjectPath
                   ? `저장 (${currentProjectPath.split(/[\\/]/).pop()})`
@@ -1596,7 +1597,7 @@ export function App() {
           <button
             type="button"
             onClick={() => void handleSaveProject(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
             title="다른 이름으로 프로젝트 저장 (.ssproj)"
           >
             <SaveAll className="h-3.5 w-3.5 text-teal-400" />
@@ -1606,7 +1607,7 @@ export function App() {
           <button
             type="button"
             onClick={() => void handleOpenProject()}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
             title="프로젝트 불러오기 (.ssproj)"
           >
             <FolderOpen className="h-3.5 w-3.5 text-sky-400" />
@@ -1619,13 +1620,13 @@ export function App() {
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-500"
           >
             <Music className="h-3.5 w-3.5" />
-            노래 파일 업로드
+            노래 파일 가져오기
           </button>
 
           <button
             type="button"
             onClick={() => setShowLyricsModal(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
           >
             <FileText className="h-3.5 w-3.5 text-cyan-400" />
             전체 가사 입력 {pureLineCount > 0 && `(${pureLineCount}줄)`}
@@ -1634,7 +1635,7 @@ export function App() {
           <button
             type="button"
             onClick={() => handleOpenBackground('append')}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-slate-200 hover:bg-slate-700"
+            className="flex items-center gap-1.5 rounded-lg border border-transparent bg-transparent px-3 py-1.5 text-slate-200 transition hover:border-slate-700 hover:bg-slate-800"
           >
             <ImageIcon className="h-3.5 w-3.5 text-emerald-400" />
             배경 이미지/영상
@@ -1661,7 +1662,7 @@ export function App() {
             type="button"
             onClick={() => handleSaveTextExport('lrc')}
             disabled={segments.length === 0}
-            className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-[11px] text-slate-300 transition hover:border-slate-700 hover:bg-slate-800 disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" /> LRC
           </button>
@@ -1669,7 +1670,7 @@ export function App() {
             type="button"
             onClick={() => handleSaveTextExport('srt')}
             disabled={segments.length === 0}
-            className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-[11px] text-slate-300 transition hover:border-slate-700 hover:bg-slate-800 disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" /> SRT
           </button>
@@ -1677,7 +1678,7 @@ export function App() {
             type="button"
             onClick={() => handleSaveTextExport('json')}
             disabled={segments.length === 0}
-            className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg border border-transparent bg-transparent px-2.5 py-1.5 text-[11px] text-slate-300 transition hover:border-slate-700 hover:bg-slate-800 disabled:opacity-40"
           >
             <Download className="h-3.5 w-3.5" /> JSON
           </button>
@@ -1709,7 +1710,7 @@ export function App() {
             onClick={() => setShowSponsorModal(true)}
             title="개발자 후원"
             aria-label="개발자 후원"
-            className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-300 transition hover:bg-slate-700 hover:text-slate-100"
+            className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg border border-transparent bg-transparent text-slate-300 transition hover:border-slate-700 hover:bg-slate-800 hover:text-slate-100"
           >
             <SponsorIcon className="h-5 w-5" />
           </button>
@@ -1810,6 +1811,7 @@ export function App() {
               setSelectedSegmentId(newId);
             }}
             videoClips={videoClips}
+            appTheme={appTheme}
             selectedClipId={selectedClipId}
             onSelectClip={(id) => {
               setSelectedClipId(id);

@@ -257,7 +257,7 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
       {/* 가사 카드 목록 */}
       <div className="flex-1 space-y-2 overflow-y-auto pr-1">
         {segments.length === 0 ? (
-          <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 p-4 text-center text-xs text-slate-500">
+          <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 p-4 text-center text-xs text-slate-300">
             <p>등록된 가사 구간이 없습니다.</p>
             <p className="mt-1">음원 업로드 후 [로컬 Whisper 싱크]를 실행하거나 직접 추가하세요.</p>
           </div>

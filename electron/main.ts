@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { pathToFileURL } from 'url';
@@ -454,6 +454,7 @@ app.commandLine.appendSwitch(
 );
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = 'dark';
   app.setAboutPanelOptions({
     applicationName: '소리숲 뮤직비디오 스튜디오',
     applicationVersion: app.getVersion(),
@@ -505,6 +506,23 @@ ipcMain.handle('app:info', () => ({
   ffmpegPath: resolveFfmpegPath(),
   modelsDir: path.join(app.getPath('userData'), 'whisper-models'),
 }));
+
+ipcMain.handle('app:set-theme', (_event, theme: string) => {
+  const isLight = theme === 'light-gray' || theme === 'white';
+  nativeTheme.themeSource = isLight ? 'light' : 'dark';
+  const bgMap: Record<string, string> = {
+    default: '#020617',
+    'dark-gray': '#111113',
+    'light-gray': '#eaedf1',
+    white: '#ffffff',
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(bgMap[theme] ?? '#020617');
+  }
+  if (process.platform === 'win32') {
+    Menu.setApplicationMenu(buildApplicationMenu());
+  }
+});
 
 ipcMain.handle('dialog:open-audio', async () => {
   if (!mainWindow) return null;

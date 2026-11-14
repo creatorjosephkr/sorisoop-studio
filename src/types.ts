@@ -14,6 +14,8 @@ export type SubtitleAnimation =
 
 export type SubtitlePosition = 'top' | 'center' | 'bottom';
 
+export type AppTheme = 'default' | 'dark-gray' | 'light-gray' | 'white';
+
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 
 export interface SubtitleStylePreset {
@@ -232,6 +234,7 @@ export interface ElectronAPI {
   showItemInFolder: (filePath: string) => Promise<void>;
   openExternalUrl?: (url: string) => Promise<void>;
   checkAppUpdate?: () => Promise<UpdateCheckResult>;
+  setAppTheme?: (theme: 'default' | 'dark-gray' | 'light-gray' | 'white') => Promise<void>;
   onOpenPrivacyPolicy?: (cb: () => void) => () => void;
   onOpenUserGuide?: (cb: () => void) => () => void;
   onOpenUpdateModal?: (cb: (prefetched?: UpdateCheckResult) => void) => () => void;

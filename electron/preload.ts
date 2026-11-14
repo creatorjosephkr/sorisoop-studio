@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternalUrl: (url: string): Promise<void> =>
     ipcRenderer.invoke('shell:open-external', url),
   checkAppUpdate: () => ipcRenderer.invoke('app:check-update'),
+  setAppTheme: (theme: string): Promise<void> => ipcRenderer.invoke('app:set-theme', theme),
   onOpenPrivacyPolicy: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('menu:open-privacy', listener);
