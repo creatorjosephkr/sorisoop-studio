@@ -422,7 +422,7 @@ function buildApplicationMenu(): Menu {
                     title: `${appName} 정보`,
                     message: `${appName} v${app.getVersion()}`,
                     detail:
-                      '개인 PC에 설치해서 사용하는 무료 음악 생성 앱\n상업적 이용 가능(개별 라이선스 확인 필수)',
+                      '모든 사람이 모든 곳에서 무료로 사용하세요\nCopyright © 2026 크리에이터요셉  jospeh@kakao.com',
                     buttons: ['확인'],
                   };
                   if (mainWindow) {
@@ -449,7 +449,8 @@ app.whenReady().then(() => {
   app.setAboutPanelOptions({
     applicationName: '소리숲 뮤직비디오 스튜디오',
     applicationVersion: app.getVersion(),
-    credits: '개인 PC에 설치해서 사용하는 무료 음악 생성 앱\n상업적 이용 가능(개별 라이선스 확인 필수)',
+    credits: '모든 사람이 모든 곳에서 무료로 사용하세요',
+    copyright: 'Copyright © 2026 크리에이터요셉  jospeh@kakao.com',
   });
   Menu.setApplicationMenu(buildApplicationMenu());
   createWindow();
