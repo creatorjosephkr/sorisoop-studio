@@ -876,10 +876,10 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <div
           ref={scrollContainerRef}
-          className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950"
+          className="max-h-60 min-w-0 flex-1 overflow-x-auto overflow-y-auto rounded-lg border border-slate-800 bg-slate-950"
         >
           <div className="relative" style={{ width: `${100 * zoom}%` }}>
             {/* 통합 시간 눈금자 (Time Ruler) */}
@@ -893,7 +893,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 onSeek(ratio * timelineDuration);
               }}
-              className="relative h-5 cursor-ew-resize border-b border-slate-800 bg-slate-900/90 select-none"
+              className="sticky top-0 z-20 h-5 cursor-ew-resize border-b border-slate-800 bg-slate-900/95 select-none"
               title="클릭 또는 드래그하여 재생헤드 이동"
             >
               {timelineDuration > 0 &&
@@ -920,168 +920,176 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 })()}
             </div>
 
-            {/* 텍스트 트랙 (특정 구간 텍스트가 있을 때 영상 트랙 위에 표시) */}
+            {/* 텍스트 트랙 (특정 구간 텍스트가 1개 이상일 때 각 텍스트마다 개별 트랙으로 표시) */}
             {rangedTextLayers.length > 0 && (
-              <div
-                ref={textTrackRef}
-                onClick={(e) => {
-                  if (timelineDuration <= 0) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                  onSeek(ratio * timelineDuration);
-                }}
-                className="relative h-9 border-b border-slate-800 bg-slate-950/90"
-              >
-                <div className="pointer-events-none absolute top-0.5 left-1.5 z-10 flex items-center gap-1 text-[9px] font-semibold text-violet-300/70">
-                  <Type className="h-2.5 w-2.5" />
-                  <span>텍스트 트랙 ({rangedTextLayers.length})</span>
-                </div>
-                {timelineDuration > 0 &&
-                  rangedTextLayers.map((layer, idx) => {
-                    const leftPct = (layer.startTime / timelineDuration) * 100;
-                    const widthPct = Math.max(
-                      1.2,
-                      ((layer.endTime - layer.startTime) / timelineDuration) * 100
-                    );
-                    const isSelected = layer.id === selectedTextLayerId;
-                    const inTrans = layer.transitionIn;
-                    const hasIn = inTrans && inTrans.type !== 'none';
-                    const outTrans = layer.transitionOut;
-                    const hasOut = outTrans && outTrans.type !== 'none';
+              <div ref={textTrackRef}>
+                {rangedTextLayers.map((layer, idx) => {
+                  const leftPct =
+                    timelineDuration > 0 ? (layer.startTime / timelineDuration) * 100 : 0;
+                  const widthPct =
+                    timelineDuration > 0
+                      ? Math.max(
+                          1.2,
+                          ((layer.endTime - layer.startTime) / timelineDuration) * 100
+                        )
+                      : 0;
+                  const isSelected = layer.id === selectedTextLayerId;
+                  const inTrans = layer.transitionIn;
+                  const hasIn = inTrans && inTrans.type !== 'none';
+                  const outTrans = layer.transitionOut;
+                  const hasOut = outTrans && outTrans.type !== 'none';
 
-                    return (
-                      <div
-                        key={layer.id}
-                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                        onMouseDown={(e) => {
-                          if (e.button !== 0) return;
-                          e.stopPropagation();
-                          onSelectTextLayer(layer.id);
-                          textDragRef.current = {
-                            mode: 'move',
-                            id: layer.id,
-                            startX: e.clientX,
-                            origStart: layer.startTime,
-                            origEnd: layer.endTime,
-                          };
-                        }}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onSelectTextLayer(layer.id);
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
-                          const side: 'in' | 'out' = relX <= 0.5 ? 'in' : 'out';
-                          const existing = side === 'in' ? layer.transitionIn : layer.transitionOut;
-                          setTextTransitionModal({
-                            layerId: layer.id,
-                            side,
-                            titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · ${
-                              side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'
-                            }`,
-                            type: existing?.type ?? 'fade',
-                            durationSec: existing?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION,
-                          });
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        title="드래그: 이동 · 양쪽 끝 드래그: 길이 조절 · 우클릭: 트랜지션 적용"
-                        className={`group absolute top-1 bottom-1 flex cursor-grab items-center overflow-hidden rounded-md border px-2 transition active:cursor-grabbing ${
-                          isSelected
-                            ? 'border-violet-400 bg-violet-950/85 ring-1 ring-violet-400/50'
-                            : 'border-violet-700/70 bg-violet-950/55 hover:border-violet-500/80'
-                        }`}
-                      >
-                        {/* 시작 트랜지션 표시 */}
-                        {hasIn && (
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectTextLayer(layer.id);
-                              setTextTransitionModal({
-                                layerId: layer.id,
-                                side: 'in',
-                                titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · 시작 트랜지션 (In)`,
-                                type: inTrans.type,
-                                durationSec: inTrans.durationSec,
-                              });
-                            }}
-                            className="mr-1 shrink-0 rounded bg-cyan-500/25 px-1 py-0.5 text-[8px] font-bold text-cyan-200 hover:bg-cyan-500/40"
-                            title={`시작 트랜지션: ${TEXT_TRANSITION_LABELS[inTrans.type]} (${inTrans.durationSec}s)`}
-                          >
-                            In {inTrans.durationSec}s
-                          </button>
-                        )}
-
-                        <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-violet-100 pointer-events-none">
-                          {layer.text.trim() || `#${idx + 1} (빈 텍스트)`}{' '}
-                          <span className="font-mono text-[9px] text-violet-300/80">
-                            ({(layer.endTime - layer.startTime).toFixed(1)}s)
-                          </span>
-                        </span>
-
-                        {/* 끝 트랜지션 표시 */}
-                        {hasOut && (
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectTextLayer(layer.id);
-                              setTextTransitionModal({
-                                layerId: layer.id,
-                                side: 'out',
-                                titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · 끝 트랜지션 (Out)`,
-                                type: outTrans.type,
-                                durationSec: outTrans.durationSec,
-                              });
-                            }}
-                            className="ml-1 shrink-0 rounded bg-amber-500/25 px-1 py-0.5 text-[8px] font-bold text-amber-200 hover:bg-amber-500/40"
-                            title={`끝 트랜지션: ${TEXT_TRANSITION_LABELS[outTrans.type]} (${outTrans.durationSec}s)`}
-                          >
-                            Out {outTrans.durationSec}s
-                          </button>
-                        )}
-
-                        {/* 왼쪽 길이 조절 핸들 */}
-                        <div
-                          onMouseDown={(e) => {
-                            if (e.button !== 0) return;
-                            e.stopPropagation();
-                            onSelectTextLayer(layer.id);
-                            textDragRef.current = {
-                              mode: 'trim-start',
-                              id: layer.id,
-                              startX: e.clientX,
-                              origStart: layer.startTime,
-                              origEnd: layer.endTime,
-                            };
-                          }}
-                          className="absolute top-0 bottom-0 left-0 w-2 cursor-ew-resize bg-violet-300/20 opacity-0 transition group-hover:opacity-100 hover:bg-violet-300/60"
-                          title="드래그하여 시작 시간 조절"
-                        />
-
-                        {/* 오른쪽 길이 조절 핸들 */}
-                        <div
-                          onMouseDown={(e) => {
-                            if (e.button !== 0) return;
-                            e.stopPropagation();
-                            onSelectTextLayer(layer.id);
-                            textDragRef.current = {
-                              mode: 'trim-end',
-                              id: layer.id,
-                              startX: e.clientX,
-                              origStart: layer.startTime,
-                              origEnd: layer.endTime,
-                            };
-                          }}
-                          className="absolute top-0 right-0 bottom-0 w-2 cursor-ew-resize bg-violet-300/20 opacity-0 transition group-hover:opacity-100 hover:bg-violet-300/60"
-                          title="드래그하여 끝 시간 조절"
-                        />
+                  return (
+                    <div
+                      key={layer.id}
+                      onClick={(e) => {
+                        if (timelineDuration <= 0) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                        onSeek(ratio * timelineDuration);
+                      }}
+                      className="relative h-8 border-b border-slate-800 bg-slate-950/90"
+                    >
+                      <div className="pointer-events-none absolute top-0.5 left-1.5 z-10 flex items-center gap-1 text-[9px] font-semibold text-violet-300/65">
+                        <Type className="h-2.5 w-2.5" />
+                        <span>T{idx + 1}</span>
                       </div>
-                    );
-                  })}
+                      {timelineDuration > 0 && (
+                        <div
+                          style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+                          onMouseDown={(e) => {
+                            if (e.button !== 0) return;
+                            e.stopPropagation();
+                            onSelectTextLayer(layer.id);
+                            textDragRef.current = {
+                              mode: 'move',
+                              id: layer.id,
+                              startX: e.clientX,
+                              origStart: layer.startTime,
+                              origEnd: layer.endTime,
+                            };
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onSelectTextLayer(layer.id);
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
+                            const side: 'in' | 'out' = relX <= 0.5 ? 'in' : 'out';
+                            const existing =
+                              side === 'in' ? layer.transitionIn : layer.transitionOut;
+                            setTextTransitionModal({
+                              layerId: layer.id,
+                              side,
+                              titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · ${
+                                side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'
+                              }`,
+                              type: existing?.type ?? 'fade',
+                              durationSec:
+                                existing?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION,
+                            });
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          title="드래그: 이동 · 양쪽 끝 드래그: 길이 조절 · 우클릭: 트랜지션 적용"
+                          className={`group absolute top-0.5 bottom-0.5 flex cursor-grab items-center overflow-hidden rounded-md border px-2 transition active:cursor-grabbing ${
+                            isSelected
+                              ? 'border-violet-400 bg-violet-950/85 ring-1 ring-violet-400/50'
+                              : 'border-violet-700/70 bg-violet-950/55 hover:border-violet-500/80'
+                          }`}
+                        >
+                          {/* 시작 트랜지션 표시 */}
+                          {hasIn && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectTextLayer(layer.id);
+                                setTextTransitionModal({
+                                  layerId: layer.id,
+                                  side: 'in',
+                                  titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · 시작 트랜지션 (In)`,
+                                  type: inTrans.type,
+                                  durationSec: inTrans.durationSec,
+                                });
+                              }}
+                              className="mr-1 shrink-0 rounded bg-cyan-500/25 px-1 py-0.5 text-[8px] font-bold text-cyan-200 hover:bg-cyan-500/40"
+                              title={`시작 트랜지션: ${TEXT_TRANSITION_LABELS[inTrans.type]} (${inTrans.durationSec}s)`}
+                            >
+                              In {inTrans.durationSec}s
+                            </button>
+                          )}
+
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-semibold text-violet-100 pointer-events-none">
+                            {layer.text.trim() || `#${idx + 1} (빈 텍스트)`}{' '}
+                            <span className="font-mono text-[9px] text-violet-300/80">
+                              ({(layer.endTime - layer.startTime).toFixed(1)}s)
+                            </span>
+                          </span>
+
+                          {/* 끝 트랜지션 표시 */}
+                          {hasOut && (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectTextLayer(layer.id);
+                                setTextTransitionModal({
+                                  layerId: layer.id,
+                                  side: 'out',
+                                  titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · 끝 트랜지션 (Out)`,
+                                  type: outTrans.type,
+                                  durationSec: outTrans.durationSec,
+                                });
+                              }}
+                              className="ml-1 shrink-0 rounded bg-amber-500/25 px-1 py-0.5 text-[8px] font-bold text-amber-200 hover:bg-amber-500/40"
+                              title={`끝 트랜지션: ${TEXT_TRANSITION_LABELS[outTrans.type]} (${outTrans.durationSec}s)`}
+                            >
+                              Out {outTrans.durationSec}s
+                            </button>
+                          )}
+
+                          {/* 왼쪽 길이 조절 핸들 */}
+                          <div
+                            onMouseDown={(e) => {
+                              if (e.button !== 0) return;
+                              e.stopPropagation();
+                              onSelectTextLayer(layer.id);
+                              textDragRef.current = {
+                                mode: 'trim-start',
+                                id: layer.id,
+                                startX: e.clientX,
+                                origStart: layer.startTime,
+                                origEnd: layer.endTime,
+                              };
+                            }}
+                            className="absolute top-0 bottom-0 left-0 w-2 cursor-ew-resize bg-violet-300/20 opacity-0 transition group-hover:opacity-100 hover:bg-violet-300/60"
+                            title="드래그하여 시작 시간 조절"
+                          />
+
+                          {/* 오른쪽 길이 조절 핸들 */}
+                          <div
+                            onMouseDown={(e) => {
+                              if (e.button !== 0) return;
+                              e.stopPropagation();
+                              onSelectTextLayer(layer.id);
+                              textDragRef.current = {
+                                mode: 'trim-end',
+                                id: layer.id,
+                                startX: e.clientX,
+                                origStart: layer.startTime,
+                                origEnd: layer.endTime,
+                              };
+                            }}
+                            className="absolute top-0 right-0 bottom-0 w-2 cursor-ew-resize bg-violet-300/20 opacity-0 transition group-hover:opacity-100 hover:bg-violet-300/60"
+                            title="드래그하여 끝 시간 조절"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
