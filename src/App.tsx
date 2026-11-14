@@ -1070,6 +1070,76 @@ export function App() {
     });
   };
 
+  // 가사 맨 앞에서 Backspace 시 윗 줄 가사와 병합 (표시 시간 유동 통합)
+  const handleMergeSegmentWithPrevious = (id: string) => {
+    setSegments((prev) => {
+      const idx = prev.findIndex((s) => s.id === id);
+      if (idx <= 0) return prev;
+
+      const prevSeg = prev[idx - 1];
+      const currSeg = prev[idx];
+      let mergedText = prevSeg.text;
+      if (prevSeg.text.length === 0) {
+        mergedText = currSeg.text;
+      } else if (currSeg.text.length > 0) {
+        mergedText =
+          /\s$/.test(prevSeg.text) || /^\s/.test(currSeg.text)
+            ? `${prevSeg.text}${currSeg.text}`
+            : `${prevSeg.text} ${currSeg.text}`;
+      }
+
+      const merged: LyricSegment = {
+        ...prevSeg,
+        startTime: Number(Math.min(prevSeg.startTime, currSeg.startTime).toFixed(2)),
+        endTime: Number(Math.max(prevSeg.endTime, currSeg.endTime).toFixed(2)),
+        text: mergedText,
+      };
+      setSelectedSegmentId(prevSeg.id);
+      return [...prev.slice(0, idx - 1), merged, ...prev.slice(idx + 1)];
+    });
+  };
+
+  // 가사 글자 사이에서 Cmd/Ctrl+Enter 시 두 구간으로 분리 (글자 수 비율로 표시 시간 분배)
+  const handleSplitSegment = (
+    id: string,
+    selStart: number,
+    selEnd: number,
+    newId: string
+  ) => {
+    setSegments((prev) => {
+      const idx = prev.findIndex((s) => s.id === id);
+      if (idx < 0) return prev;
+
+      const seg = prev[idx];
+      const leftText = seg.text.slice(0, selStart).trimEnd();
+      const rightText = seg.text.slice(selEnd).trimStart();
+      if (!leftText || !rightText) return prev;
+
+      const totalDur = Math.max(0.2, seg.endTime - seg.startTime);
+      const leftWeight = leftText.replace(/\s+/g, '').length || leftText.length;
+      const rightWeight = rightText.replace(/\s+/g, '').length || rightText.length;
+      const minDur = Math.min(0.2, totalDur / 2);
+      const rawSplit = seg.startTime + totalDur * (leftWeight / (leftWeight + rightWeight));
+      const splitTime = Number(
+        Math.min(seg.endTime - minDur, Math.max(seg.startTime + minDur, rawSplit)).toFixed(2)
+      );
+
+      const firstSeg: LyricSegment = {
+        ...seg,
+        endTime: splitTime,
+        text: leftText,
+      };
+      const secondSeg: LyricSegment = {
+        id: newId,
+        startTime: splitTime,
+        endTime: seg.endTime,
+        text: rightText,
+      };
+      setSelectedSegmentId(newId);
+      return [...prev.slice(0, idx), firstSeg, secondSeg, ...prev.slice(idx + 1)];
+    });
+  };
+
   // 프로젝트(.ssproj) 저장 및 불러오기
   const handleSaveProject = async () => {
     const projectPayload = {
@@ -1509,6 +1579,13 @@ export function App() {
                 prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
               )
             }
+            textLayers={textLayers}
+            selectedTextLayerId={selectedTextLayerId}
+            onSelectTextLayer={(id) => {
+              setSelectedTextLayerId(id);
+              if (id) setRightTab('text');
+            }}
+            onUpdateTextLayer={handleUpdateTextLayer}
           />
         </section>
 
@@ -1627,6 +1704,8 @@ export function App() {
                       ]);
                     }}
                     onInsertEmptyLyricAt={handleInsertEmptyLyricAt}
+                    onMergeWithPrevious={handleMergeSegmentWithPrevious}
+                    onSplitSegment={handleSplitSegment}
                     onAddSegment={() => {
                       const start = Number(currentTime.toFixed(2));
                       const end = Number(Math.min(duration || start + 3, start + 3).toFixed(2));

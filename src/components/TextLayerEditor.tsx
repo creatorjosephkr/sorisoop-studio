@@ -1,7 +1,11 @@
 import React from 'react';
-import { Eye, EyeOff, Plus, Trash2, Type } from 'lucide-react';
+import { Eye, EyeOff, Plus, Sparkles, Trash2, Type } from 'lucide-react';
 import { FontPicker } from './FontPicker';
-import { TextLayer } from '../types';
+import { TextLayer, TextTransitionType } from '../types';
+import {
+  DEFAULT_TEXT_TRANSITION_DURATION,
+  TEXT_TRANSITION_LABELS,
+} from '../utils/videoClipUtils';
 
 interface TextLayerEditorProps {
   layers: TextLayer[];
@@ -159,50 +163,191 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
             </div>
           </div>
 
-          {/* 표시 시간 */}
-          <div className="space-y-1.5 border-t border-slate-800 pt-2.5">
-            <label className="flex items-center justify-between">
-              <span className="text-slate-300">전체 구간 항상 표시</span>
-              <input
-                type="checkbox"
-                checked={active.alwaysVisible}
-                onChange={(e) =>
-                  onUpdateLayer(active.id, { alwaysVisible: e.target.checked })
-                }
-                className="accent-cyan-400"
-              />
-            </label>
+          {/* 표출 범위 & 트랜지션 */}
+          <div className="space-y-2 border-t border-slate-800 pt-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-slate-300">표출 범위</span>
+              <span className="text-[10px] text-slate-500">
+                {active.alwaysVisible ? '영상 전체' : '타임라인 텍스트 트랙 활성화'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => onUpdateLayer(active.id, { alwaysVisible: true })}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                  active.alwaysVisible
+                    ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200'
+                    : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                영상 전체
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const safeStart = Math.max(0, active.startTime || 0);
+                  const safeEnd =
+                    active.endTime > safeStart + 0.2
+                      ? active.endTime
+                      : Math.min(duration || safeStart + 5, safeStart + 5);
+                  onUpdateLayer(active.id, {
+                    alwaysVisible: false,
+                    startTime: Number(safeStart.toFixed(2)),
+                    endTime: Number(Math.max(safeStart + 0.2, safeEnd).toFixed(2)),
+                  });
+                }}
+                className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                  !active.alwaysVisible
+                    ? 'border-violet-400 bg-violet-500/20 text-violet-200'
+                    : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                특정 구간
+              </button>
+            </div>
             {!active.alwaysVisible && (
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-400">시작 (초)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={duration || 9999}
-                    step={0.1}
-                    value={active.startTime}
-                    onChange={(e) =>
-                      onUpdateLayer(active.id, { startTime: Math.max(0, Number(e.target.value) || 0) })
-                    }
-                    className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
-                  />
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-slate-400">시작 (초)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={duration || 9999}
+                      step={0.1}
+                      value={active.startTime}
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value) || 0);
+                        onUpdateLayer(active.id, {
+                          startTime: val,
+                          endTime: Math.max(val + 0.2, active.endTime),
+                        });
+                      }}
+                      className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400">끝 (초)</span>
+                    <input
+                      type="number"
+                      min={0.2}
+                      max={duration || 9999}
+                      step={0.1}
+                      value={active.endTime}
+                      onChange={(e) => {
+                        const val = Math.max(active.startTime + 0.2, Number(e.target.value) || 0);
+                        onUpdateLayer(active.id, { endTime: val });
+                      }}
+                      className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] text-slate-400">끝 (초)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={duration || 9999}
-                    step={0.1}
-                    value={active.endTime}
-                    onChange={(e) =>
-                      onUpdateLayer(active.id, { endTime: Math.max(0, Number(e.target.value) || 0) })
-                    }
-                    className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
-                  />
+
+                {/* 시작 / 끝 트랜지션 설정 */}
+                <div className="space-y-1.5 rounded-lg border border-slate-800/80 bg-slate-900/60 p-2">
+                  <div className="flex items-center gap-1 text-[10px] font-semibold text-violet-300">
+                    <Sparkles className="h-3 w-3" />
+                    트랜지션 (타임라인 트랙 우클릭으로도 편집 가능)
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-slate-400">시작 (In)</span>
+                      <select
+                        value={active.transitionIn?.type ?? 'none'}
+                        onChange={(e) =>
+                          onUpdateLayer(active.id, {
+                            transitionIn: {
+                              type: e.target.value as TextTransitionType,
+                              durationSec:
+                                active.transitionIn?.durationSec ??
+                                DEFAULT_TEXT_TRANSITION_DURATION,
+                            },
+                          })
+                        }
+                        className="mt-0.5 w-full rounded bg-slate-950 px-1.5 py-1 text-[11px] text-slate-100"
+                      >
+                        {(Object.keys(TEXT_TRANSITION_LABELS) as TextTransitionType[]).map((k) => (
+                          <option key={k} value={k}>
+                            {TEXT_TRANSITION_LABELS[k]}
+                          </option>
+                        ))}
+                      </select>
+                      {(active.transitionIn?.type ?? 'none') !== 'none' && (
+                        <input
+                          type="number"
+                          min={0.1}
+                          max={3}
+                          step={0.1}
+                          value={
+                            active.transitionIn?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION
+                          }
+                          onChange={(e) =>
+                            onUpdateLayer(active.id, {
+                              transitionIn: {
+                                type: active.transitionIn?.type ?? 'fade',
+                                durationSec: Math.max(
+                                  0.1,
+                                  Math.min(3, Number(e.target.value) || 0.5)
+                                ),
+                              },
+                            })
+                          }
+                          className="mt-1 w-full rounded bg-slate-950 px-2 py-0.5 font-mono text-[10px] text-violet-200"
+                          title="시작 트랜지션 길이 (초)"
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400">끝 (Out)</span>
+                      <select
+                        value={active.transitionOut?.type ?? 'none'}
+                        onChange={(e) =>
+                          onUpdateLayer(active.id, {
+                            transitionOut: {
+                              type: e.target.value as TextTransitionType,
+                              durationSec:
+                                active.transitionOut?.durationSec ??
+                                DEFAULT_TEXT_TRANSITION_DURATION,
+                            },
+                          })
+                        }
+                        className="mt-0.5 w-full rounded bg-slate-950 px-1.5 py-1 text-[11px] text-slate-100"
+                      >
+                        {(Object.keys(TEXT_TRANSITION_LABELS) as TextTransitionType[]).map((k) => (
+                          <option key={k} value={k}>
+                            {TEXT_TRANSITION_LABELS[k]}
+                          </option>
+                        ))}
+                      </select>
+                      {(active.transitionOut?.type ?? 'none') !== 'none' && (
+                        <input
+                          type="number"
+                          min={0.1}
+                          max={3}
+                          step={0.1}
+                          value={
+                            active.transitionOut?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION
+                          }
+                          onChange={(e) =>
+                            onUpdateLayer(active.id, {
+                              transitionOut: {
+                                type: active.transitionOut?.type ?? 'fade',
+                                durationSec: Math.max(
+                                  0.1,
+                                  Math.min(3, Number(e.target.value) || 0.5)
+                                ),
+                              },
+                            })
+                          }
+                          className="mt-1 w-full rounded bg-slate-950 px-2 py-0.5 font-mono text-[10px] text-violet-200"
+                          title="끝 트랜지션 길이 (초)"
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
 

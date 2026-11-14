@@ -212,8 +212,51 @@ function drawTextLayers(
     const lineHeightPx = fontSizePx * 1.25;
     const totalH = lines.length * lineHeightPx;
 
+    // 특정 구간 텍스트 트랜지션(In/Out) 계산
+    let alphaMul = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+    let scale = 1;
+
+    if (!layer.alwaysVisible) {
+      const layerDur = Math.max(0.2, layer.endTime - layer.startTime);
+      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+      const inTrans = layer.transitionIn;
+      if (inTrans && inTrans.type !== 'none' && inTrans.durationSec > 0) {
+        const inDur = Math.min(inTrans.durationSec, layerDur * 0.5);
+        if (inDur > 0 && currentTime < layer.startTime + inDur) {
+          const rawT = Math.max(0, Math.min(1, (currentTime - layer.startTime) / inDur));
+          const p = easeOutCubic(rawT);
+          const inv = 1 - p;
+          alphaMul *= p;
+          if (inTrans.type === 'slide-up') offsetY += inv * 48 * baseScale;
+          else if (inTrans.type === 'slide-down') offsetY -= inv * 48 * baseScale;
+          else if (inTrans.type === 'slide-left') offsetX += inv * 72 * baseScale;
+          else if (inTrans.type === 'slide-right') offsetX -= inv * 72 * baseScale;
+          else if (inTrans.type === 'zoom') scale *= 0.65 + 0.35 * p;
+        }
+      }
+
+      const outTrans = layer.transitionOut;
+      if (outTrans && outTrans.type !== 'none' && outTrans.durationSec > 0) {
+        const outDur = Math.min(outTrans.durationSec, layerDur * 0.5);
+        if (outDur > 0 && currentTime > layer.endTime - outDur) {
+          const rawT = Math.max(0, Math.min(1, (layer.endTime - currentTime) / outDur));
+          const p = easeOutCubic(rawT);
+          const inv = 1 - p;
+          alphaMul *= p;
+          if (outTrans.type === 'slide-up') offsetY -= inv * 48 * baseScale;
+          else if (outTrans.type === 'slide-down') offsetY += inv * 48 * baseScale;
+          else if (outTrans.type === 'slide-left') offsetX -= inv * 72 * baseScale;
+          else if (outTrans.type === 'slide-right') offsetX += inv * 72 * baseScale;
+          else if (outTrans.type === 'zoom') scale *= 0.65 + 0.35 * p;
+        }
+      }
+    }
+
     ctx.save();
-    ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
+    ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity * alphaMul));
     ctx.font = `${layer.fontWeight} ${fontSizePx}px "${fontMeta.family}"`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -221,7 +264,10 @@ function drawTextLayers(
     const widest = Math.max(10, ...lines.map((l) => ctx.measureText(l).width));
     const cx = (layer.x / 100) * width;
     const cy = (layer.y / 100) * height;
-    ctx.translate(cx, cy);
+    ctx.translate(cx + offsetX, cy + offsetY);
+    if (scale !== 1) {
+      ctx.scale(scale, scale);
+    }
 
     // 1) 배경 박스
     if (layer.boxEnabled) {

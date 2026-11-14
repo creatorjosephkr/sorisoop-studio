@@ -34,6 +34,8 @@ interface SegmentListEditorProps {
   onDeleteSegment: (id: string) => void;
   onInsertSegmentAt: (index: number, type: 'intro' | 'gap' | 'outro') => void;
   onInsertEmptyLyricAt: (index: number) => void;
+  onMergeWithPrevious: (id: string) => void;
+  onSplitSegment: (id: string, selStart: number, selEnd: number, newId: string) => void;
   onAddSegment: () => void;
 }
 
@@ -60,9 +62,13 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
   onDeleteSegment,
   onInsertSegmentAt,
   onInsertEmptyLyricAt,
+  onMergeWithPrevious,
+  onSplitSegment,
   onAddSegment,
 }) => {
   const activeCardRef = useRef<HTMLDivElement | null>(null);
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const pendingFocusRef = useRef<{ id: string; cursorPos: number } | null>(null);
 
   const playingId =
     segments.find((s) => currentTime >= s.startTime && currentTime < s.endTime)?.id ?? null;
@@ -73,6 +79,19 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
       activeCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [playingId, selectedSegmentId, autoTrack]);
+
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) return;
+    const inputEl = inputRefs.current[pending.id];
+    if (!inputEl) return;
+    pendingFocusRef.current = null;
+    requestAnimationFrame(() => {
+      inputEl.focus();
+      const pos = Math.min(pending.cursorPos, inputEl.value.length);
+      inputEl.setSelectionRange(pos, pos);
+    });
+  }, [segments]);
 
   const nudge = (seg: LyricSegment, field: 'startTime' | 'endTime', delta: number) => {
     const nextVal = Math.max(
@@ -340,12 +359,47 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
                   </div>
 
                   <input
+                    ref={(el) => {
+                      inputRefs.current[seg.id] = el;
+                    }}
                     type="text"
                     value={seg.text}
                     onFocus={() => onSelectSegment(seg)}
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectSegment(seg);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing) return;
+                      const selStart = e.currentTarget.selectionStart ?? 0;
+                      const selEnd = e.currentTarget.selectionEnd ?? selStart;
+
+                      if (e.key === 'Backspace' && idx > 0 && selStart === 0 && selEnd === 0) {
+                        e.preventDefault();
+                        const prevSeg = segments[idx - 1];
+                        const cursorPos =
+                          prevSeg.text.length === 0
+                            ? 0
+                            : seg.text.length === 0 ||
+                                /\s$/.test(prevSeg.text) ||
+                                /^\s/.test(seg.text)
+                              ? prevSeg.text.length
+                              : prevSeg.text.length + 1;
+                        pendingFocusRef.current = { id: prevSeg.id, cursorPos };
+                        onMergeWithPrevious(seg.id);
+                        return;
+                      }
+
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                        const leftText = seg.text.slice(0, selStart).trimEnd();
+                        const rightText = seg.text.slice(selEnd).trimStart();
+                        if (leftText.length > 0 && rightText.length > 0) {
+                          e.preventDefault();
+                          const newId = `seg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                          pendingFocusRef.current = { id: newId, cursorPos: 0 };
+                          onSplitSegment(seg.id, selStart, selEnd, newId);
+                        }
+                      }
                     }}
                     onChange={(e) => onUpdateSegment(seg.id, { text: e.target.value })}
                     placeholder="가사 입력..."

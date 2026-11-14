@@ -98,6 +98,20 @@ export interface VisualEffectsConfig {
   lyricLedMeterEnabled?: boolean;
 }
 
+export type TextTransitionType =
+  | 'none'
+  | 'fade'
+  | 'slide-up'
+  | 'slide-down'
+  | 'slide-left'
+  | 'slide-right'
+  | 'zoom';
+
+export interface TextLayerTransition {
+  type: TextTransitionType;
+  durationSec: number; // 기본 0.5초
+}
+
 export interface TextLayer {
   id: string;
   text: string;
@@ -107,6 +121,8 @@ export interface TextLayer {
   alwaysVisible: boolean;
   startTime: number;
   endTime: number;
+  transitionIn?: TextLayerTransition;
+  transitionOut?: TextLayerTransition;
   fontId: string;
   fontSize: number;
   fontWeight: number;

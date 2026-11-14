@@ -1,7 +1,8 @@
-import { TransitionType, VideoClip } from '../types';
+import { TextTransitionType, TransitionType, VideoClip } from '../types';
 
 export const DEFAULT_IMAGE_CLIP_DURATION = 5.0; // 5초 (150프레임 @ 30fps)
 export const DEFAULT_TRANSITION_DURATION = 1.0; // 1초 (30프레임 @ 30fps)
+export const DEFAULT_TEXT_TRANSITION_DURATION = 0.5; // 0.5초 (15프레임 @ 30fps)
 export const MIN_CLIP_DURATION = 0.25;
 
 export const TRANSITION_LABELS: Record<TransitionType, string> = {
@@ -12,6 +13,16 @@ export const TRANSITION_LABELS: Record<TransitionType, string> = {
   'dip-to-black': 'Dip to Black',
   'dip-to-white': 'Dip to White',
   'tv-static': 'TV 지지직거림',
+};
+
+export const TEXT_TRANSITION_LABELS: Record<TextTransitionType, string> = {
+  none: '없음',
+  fade: '페이드 (Fade)',
+  'slide-up': '위로 슬라이드',
+  'slide-down': '아래로 슬라이드',
+  'slide-left': '왼쪽 슬라이드',
+  'slide-right': '오른쪽 슬라이드',
+  zoom: '확대/축소 (Zoom)',
 };
 
 /**
