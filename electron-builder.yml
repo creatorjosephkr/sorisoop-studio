@@ -1,5 +1,5 @@
 appId: com.sorisoop.lyrics
-productName: Sorisoop Lyrics Studio
+productName: SoriSoop MV Studio
 directories:
   output: release
 files:
@@ -14,19 +14,19 @@ asarUnpack:
 fileAssociations:
   - ext: ssproj
     name: Sorisoop Project
-    description: Sorisoop Lyrics Studio Project File
+    description: SoriSoop MV Studio Project File
     role: Editor
     rank: Owner
 mac:
   icon: app-icon.icns
   category: public.app-category.video
-  artifactName: SoriSoop_Studio_v${version}-Mac-${arch}.${ext}
+  artifactName: SoriSoop_MV_Studio_v${version}-Mac-${arch}.${ext}
   target:
     - dmg
     - zip
 win:
   icon: app-icon.png
-  artifactName: SoriSoop_Studio_v${version}-Windows.${ext}
+  artifactName: SoriSoop_MV_Studio_v${version}-Windows.${ext}
   target:
     - nsis
     - portable

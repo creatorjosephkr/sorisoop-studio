@@ -1,4 +1,4 @@
-# 🌲 Sorisoop Lyrics Studio (소리숲 가사 스튜디오)
+# 🌲 SoriSoop MV Studio (소리숲 뮤직비디오 스튜디오)
 
 로컬 Whisper AI 음성 인식 기반의 **가사 자동 싱크 & 무료 한글 폰트 내장 뮤직비디오 제작 스튜디오**입니다. (macOS / Windows 지원)
 
@@ -10,9 +10,9 @@
 
 | 플랫폼 | 파일명 | 대상 |
 | :--- | :--- | :--- |
-| **macOS (Apple Silicon)** | `SoriSoop_Studio_v1.0.0-Mac-arm64.dmg` | M1 / M2 / M3 / M4 등 Apple Silicon Mac |
-| **macOS (Intel)** | `SoriSoop_Studio_v1.0.0-Mac-intel.dmg` | Intel 프로세서 기반 Mac (`x64`) |
-| **Windows** | `SoriSoop_Studio_v1.0.0-Windows.exe` | Windows 64-bit (`x64`) 설치 파일 |
+| **macOS (Apple Silicon)** | `SoriSoop_MV_Studio_v1.0.0-Mac-arm64.dmg` | M1 / M2 / M3 / M4 등 Apple Silicon Mac |
+| **macOS (Intel)** | `SoriSoop_MV_Studio_v1.0.0-Mac-intel.dmg` | Intel 프로세서 기반 Mac (`x64`) |
+| **Windows** | `SoriSoop_MV_Studio_v1.0.0-Windows.exe` | Windows 64-bit (`x64`) 설치 파일 |
 
 ---
 

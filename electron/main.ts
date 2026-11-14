@@ -255,7 +255,7 @@ async function checkForUpdates(): Promise<UpdateCheckResult> {
     const res = await fetch(GITHUB_RELEASES_API, {
       headers: {
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'Sorisoop-Lyrics-Studio',
+        'User-Agent': 'SoriSoop-MV-Studio',
       },
       signal: AbortSignal.timeout(6000),
     });

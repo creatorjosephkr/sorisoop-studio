@@ -241,7 +241,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 {isChecking
                   ? '새 버전을 확인하고 있습니다...'
                   : hasUpdate
-                    ? result?.releaseName || `소리숲 스튜디오 v${result?.latestVersion}`
+                    ? result?.releaseName || `소리숲 뮤직비디오 스튜디오 v${result?.latestVersion}`
                     : isUpToDate
                       ? '현재 최신 버전이 설치되어 있습니다'
                       : '업데이트 정보를 가져오지 못했습니다'}

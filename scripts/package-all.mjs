@@ -18,7 +18,7 @@ const TARGETS = [
       '--mac',
       'dmg',
       '--arm64',
-      '-c.mac.artifactName=SoriSoop_Studio_v${version}-Mac-arm64.${ext}',
+      '-c.mac.artifactName=SoriSoop_MV_Studio_v${version}-Mac-arm64.${ext}',
     ],
   },
   {
@@ -30,7 +30,7 @@ const TARGETS = [
       '--mac',
       'dmg',
       '--x64',
-      '-c.mac.artifactName=SoriSoop_Studio_v${version}-Mac-intel.${ext}',
+      '-c.mac.artifactName=SoriSoop_MV_Studio_v${version}-Mac-intel.${ext}',
     ],
   },
   {
@@ -42,7 +42,7 @@ const TARGETS = [
       '--win',
       'nsis',
       '--x64',
-      '-c.win.artifactName=SoriSoop_Studio_v${version}-Windows.${ext}',
+      '-c.win.artifactName=SoriSoop_MV_Studio_v${version}-Windows.${ext}',
     ],
   },
 ];
