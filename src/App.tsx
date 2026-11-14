@@ -675,6 +675,20 @@ export function App() {
         return;
       }
 
+      if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (selectedClipId) {
+          e.preventDefault();
+          setVideoClips((prev) => prev.filter((c) => c.id !== selectedClipId));
+          setSelectedClipId(null);
+          return;
+        }
+        if (selectedTextLayerId) {
+          e.preventDefault();
+          handleDeleteTextLayer(selectedTextLayerId);
+          return;
+        }
+      }
+
       if (e.code === 'Space') {
         e.preventDefault();
         handleTogglePlay();
@@ -727,7 +741,15 @@ export function App() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [currentTime, handleSeek, handleTogglePlay, segments, selectedSegmentId]);
+  }, [
+    currentTime,
+    handleSeek,
+    handleTogglePlay,
+    segments,
+    selectedClipId,
+    selectedSegmentId,
+    selectedTextLayerId,
+  ]);
 
   useEffect(() => {
     volumeRef.current = volume;
@@ -1762,7 +1784,10 @@ export function App() {
             }}
             videoClips={videoClips}
             selectedClipId={selectedClipId}
-            onSelectClip={setSelectedClipId}
+            onSelectClip={(id) => {
+              setSelectedClipId(id);
+              if (id) setSelectedTextLayerId(null);
+            }}
             onSplitClip={() => {
               const target =
                 videoClips.find((c) => c.id === selectedClipId) ??
@@ -1770,6 +1795,9 @@ export function App() {
               if (!target) return;
               setVideoClips((prev) => splitVideoClipAt(prev, target.id, currentTime));
             }}
+            onSplitClipAt={(id, splitTime) =>
+              setVideoClips((prev) => splitVideoClipAt(prev, id, splitTime))
+            }
             onDeleteClip={(id) => {
               setVideoClips((prev) => prev.filter((c) => c.id !== id));
               if (selectedClipId === id) setSelectedClipId(null);
@@ -1792,9 +1820,25 @@ export function App() {
             selectedTextLayerId={selectedTextLayerId}
             onSelectTextLayer={(id) => {
               setSelectedTextLayerId(id);
-              if (id) setRightTab('text');
+              if (id) {
+                setSelectedClipId(null);
+                setRightTab('text');
+              }
             }}
             onUpdateTextLayer={handleUpdateTextLayer}
+            onDeleteTextLayer={handleDeleteTextLayer}
+            onSplitTextLayer={(id, splitTime) => {
+              const target = textLayers.find((l) => l.id === id);
+              if (!target) return;
+              if (splitTime <= target.startTime + 0.1 || splitTime >= target.endTime - 0.1) return;
+              const newId = `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const firstPart: TextLayer = { ...target, endTime: splitTime };
+              const secondPart: TextLayer = { ...target, id: newId, startTime: splitTime };
+              setTextLayers((prev) =>
+                prev.flatMap((l) => (l.id === id ? [firstPart, secondPart] : [l]))
+              );
+              setSelectedTextLayerId(newId);
+            }}
           />
         </section>
 

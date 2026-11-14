@@ -60,6 +60,7 @@ interface WaveformTimelineProps {
   selectedClipId: string | null;
   onSelectClip: (id: string | null) => void;
   onSplitClip: () => void;
+  onSplitClipAt?: (id: string, splitTime: number) => void;
   onDeleteClip: (id: string) => void;
   onJoinClipGaps: () => void;
   onInsertMediaAtCurrent: () => void;
@@ -71,6 +72,8 @@ interface WaveformTimelineProps {
   selectedTextLayerId: string | null;
   onSelectTextLayer: (id: string | null) => void;
   onUpdateTextLayer: (id: string, patch: Partial<TextLayer>) => void;
+  onDeleteTextLayer: (id: string) => void;
+  onSplitTextLayer?: (id: string, splitTime: number) => void;
 }
 
 function formatTime(sec: number): string {
@@ -109,6 +112,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   selectedClipId,
   onSelectClip,
   onSplitClip,
+  onSplitClipAt,
   onDeleteClip,
   onJoinClipGaps,
   onInsertMediaAtCurrent,
@@ -120,6 +124,8 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   selectedTextLayerId,
   onSelectTextLayer,
   onUpdateTextLayer,
+  onDeleteTextLayer,
+  onSplitTextLayer,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -132,6 +138,30 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
   const [hoverCursor, setHoverCursor] = useState<'pointer' | 'ew-resize' | 'grab' | 'grabbing'>('pointer');
   const [editingTransClipId, setEditingTransClipId] = useState<string | null>(null);
+  const [sourceContextMenu, setSourceContextMenu] = useState<{
+    kind: 'clip' | 'text';
+    id: string;
+    x: number;
+    y: number;
+    clickTime: number;
+    side: 'in' | 'out';
+  } | null>(null);
+
+  useEffect(() => {
+    if (!sourceContextMenu) return;
+    const close = () => setSourceContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSourceContextMenu(null);
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [sourceContextMenu]);
   const [transitionModal, setTransitionModal] = useState<{
     clipId: string;
     side: 'in' | 'out';
@@ -812,6 +842,22 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   <span className="w-7 font-mono">{Math.round(selClip.opacity * 100)}%</span>
                 </label>
 
+                <label className="flex items-center gap-1">
+                  <span className="text-slate-400">블러</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={24}
+                    step={1}
+                    value={selClip.blur ?? 0}
+                    onChange={(e) =>
+                      onUpdateClip(selClip.id, { blur: Number(e.target.value) })
+                    }
+                    className="w-16 accent-cyan-400"
+                  />
+                  <span className="w-8 font-mono">{selClip.blur ?? 0}px</span>
+                </label>
+
                 <button
                   type="button"
                   onClick={() => onUpdateClip(selClip.id, { fitToFrame: !selClip.fitToFrame })}
@@ -976,21 +1022,19 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                             const rect = e.currentTarget.getBoundingClientRect();
                             const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
                             const side: 'in' | 'out' = relX <= 0.5 ? 'in' : 'out';
-                            const existing =
-                              side === 'in' ? layer.transitionIn : layer.transitionOut;
-                            setTextTransitionModal({
-                              layerId: layer.id,
+                            const clickTime =
+                              layer.startTime + relX * (layer.endTime - layer.startTime);
+                            setSourceContextMenu({
+                              kind: 'text',
+                              id: layer.id,
+                              x: e.clientX,
+                              y: e.clientY,
+                              clickTime,
                               side,
-                              titleLabel: `${layer.text.trim() || `#${idx + 1} 텍스트`} · ${
-                                side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'
-                              }`,
-                              type: existing?.type ?? 'fade',
-                              durationSec:
-                                existing?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION,
                             });
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          title="드래그: 이동 · 양쪽 끝 드래그: 길이 조절 · 우클릭: 트랜지션 적용"
+                          title="드래그: 이동 · 양쪽 끝 드래그: 길이 조절 · 우클릭: 메뉴"
                           className={`group absolute top-0.5 bottom-0.5 flex cursor-grab items-center overflow-hidden rounded-md border px-2 transition active:cursor-grabbing ${
                             isSelected
                               ? 'border-violet-400 bg-violet-950/85 ring-1 ring-violet-400/50'
@@ -1159,17 +1203,19 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                         const rect = e.currentTarget.getBoundingClientRect();
                         const relX = (e.clientX - rect.left) / Math.max(1, rect.width);
                         const side: 'in' | 'out' = relX <= 0.5 ? 'in' : 'out';
-                        const existing = side === 'in' ? clip.transitionIn : clip.transitionOut;
-                        setTransitionModal({
-                          clipId: clip.id,
+                        const clickTime =
+                          clip.timelineStart + relX * (clip.timelineEnd - clip.timelineStart);
+                        setSourceContextMenu({
+                          kind: 'clip',
+                          id: clip.id,
+                          x: e.clientX,
+                          y: e.clientY,
+                          clickTime,
                           side,
-                          titleLabel: `${clip.name} · ${side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'}`,
-                          type: existing?.type ?? 'x-dissolve',
-                          durationSec: existing?.durationSec ?? DEFAULT_TRANSITION_DURATION,
                         });
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      title="드래그: 이동 · 좌/우 끝 우클릭: 시작/끝 트랜지션 적용"
+                      title="드래그: 이동 · 우클릭: 메뉴 (삭제/잘라내기/전구간/트랜지션)"
                       className={`group absolute top-1 bottom-1 flex cursor-grab items-center overflow-hidden rounded-md border transition active:cursor-grabbing ${
                         isSelected
                           ? 'border-emerald-400 bg-emerald-950/70 ring-1 ring-emerald-400/50'
@@ -1745,6 +1791,223 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
           </div>
         </div>
       )}
+      {/* 타임라인 소스 우클릭 컨텍스트 메뉴 */}
+      {sourceContextMenu && (() => {
+        const menuW = 196;
+        const menuH = 220;
+        const left = Math.min(sourceContextMenu.x, Math.max(8, window.innerWidth - menuW - 8));
+        const top = Math.min(sourceContextMenu.y, Math.max(8, window.innerHeight - menuH - 8));
+
+        if (sourceContextMenu.kind === 'clip') {
+          const clip = videoClips.find((c) => c.id === sourceContextMenu.id);
+          if (!clip) return null;
+          const isFullRange =
+            timelineDuration > 0 &&
+            clip.timelineStart <= 0.05 &&
+            clip.timelineEnd >= timelineDuration - 0.05;
+          const splitPoint =
+            currentTime > clip.timelineStart + 0.1 && currentTime < clip.timelineEnd - 0.1
+              ? currentTime
+              : sourceContextMenu.clickTime;
+          const canSplit =
+            splitPoint > clip.timelineStart + 0.1 && splitPoint < clip.timelineEnd - 0.1;
+
+          return (
+            <div
+              style={{ left, top }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+              className="fixed z-50 w-48 rounded-xl border border-slate-700 bg-slate-900/95 p-1.5 text-xs text-slate-200 shadow-2xl backdrop-blur"
+            >
+              <button
+                type="button"
+                disabled={!canSplit}
+                onClick={() => {
+                  if (onSplitClipAt) {
+                    onSplitClipAt(clip.id, splitPoint);
+                  } else {
+                    onSplitClip();
+                  }
+                  setSourceContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+              >
+                <Scissors className="h-3.5 w-3.5 text-amber-300" />
+                잘라내기 (분할)
+              </button>
+              <button
+                type="button"
+                disabled={timelineDuration <= 0 || isFullRange}
+                onClick={() => {
+                  onUpdateClip(clip.id, {
+                    timelineStart: 0,
+                    timelineEnd: timelineDuration,
+                  });
+                  setSourceContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+              >
+                <Maximize2 className="h-3.5 w-3.5 text-emerald-400" />
+                전구간 설정
+              </button>
+              <button
+                type="button"
+                disabled={timelineDuration <= 0 || !isFullRange}
+                onClick={() => {
+                  const baseDur =
+                    clip.sourceDuration > 0 && clip.sourceDuration < timelineDuration - 0.5
+                      ? clip.sourceDuration
+                      : Math.min(5, Math.max(1, timelineDuration * 0.5));
+                  onUpdateClip(clip.id, {
+                    timelineStart: 0,
+                    timelineEnd: Math.min(timelineDuration, Math.max(1, baseDur)),
+                  });
+                  setSourceContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+              >
+                <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
+                전구간 설정 해제
+              </button>
+              <div className="my-1 border-t border-slate-800" />
+              <button
+                type="button"
+                onClick={() => {
+                  const side = sourceContextMenu.side;
+                  const existing = side === 'in' ? clip.transitionIn : clip.transitionOut;
+                  setTransitionModal({
+                    clipId: clip.id,
+                    side,
+                    titleLabel: `${clip.name} · ${
+                      side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'
+                    }`,
+                    type: existing?.type ?? 'x-dissolve',
+                    durationSec: existing?.durationSec ?? DEFAULT_TRANSITION_DURATION,
+                  });
+                  setSourceContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+                {sourceContextMenu.side === 'in' ? '시작 트랜지션 설정' : '끝 트랜지션 설정'}
+              </button>
+              <div className="my-1 border-t border-slate-800" />
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteClip(clip.id);
+                  setSourceContextMenu(null);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-rose-300 hover:bg-rose-500/15"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                삭제
+              </button>
+            </div>
+          );
+        }
+
+        const layer = textLayers.find((l) => l.id === sourceContextMenu.id);
+        if (!layer) return null;
+        const isFullRange =
+          timelineDuration > 0 &&
+          layer.startTime <= 0.05 &&
+          layer.endTime >= timelineDuration - 0.05;
+        const splitPoint =
+          currentTime > layer.startTime + 0.1 && currentTime < layer.endTime - 0.1
+            ? currentTime
+            : sourceContextMenu.clickTime;
+        const canSplit =
+          Boolean(onSplitTextLayer) &&
+          splitPoint > layer.startTime + 0.1 &&
+          splitPoint < layer.endTime - 0.1;
+
+        return (
+          <div
+            style={{ left, top }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+            className="fixed z-50 w-48 rounded-xl border border-slate-700 bg-slate-900/95 p-1.5 text-xs text-slate-200 shadow-2xl backdrop-blur"
+          >
+            <button
+              type="button"
+              disabled={!canSplit}
+              onClick={() => {
+                onSplitTextLayer?.(layer.id, splitPoint);
+                setSourceContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+            >
+              <Scissors className="h-3.5 w-3.5 text-amber-300" />
+              잘라내기 (분할)
+            </button>
+            <button
+              type="button"
+              disabled={timelineDuration <= 0 || isFullRange}
+              onClick={() => {
+                onUpdateTextLayer(layer.id, {
+                  startTime: 0,
+                  endTime: timelineDuration,
+                });
+                setSourceContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+            >
+              <Maximize2 className="h-3.5 w-3.5 text-violet-400" />
+              전구간 설정
+            </button>
+            <button
+              type="button"
+              disabled={timelineDuration <= 0 || !isFullRange}
+              onClick={() => {
+                onUpdateTextLayer(layer.id, {
+                  startTime: 0,
+                  endTime: Math.min(timelineDuration, Math.max(1, Math.min(5, timelineDuration * 0.5))),
+                });
+                setSourceContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+            >
+              <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
+              전구간 설정 해제
+            </button>
+            <div className="my-1 border-t border-slate-800" />
+            <button
+              type="button"
+              onClick={() => {
+                const side = sourceContextMenu.side;
+                const existing = side === 'in' ? layer.transitionIn : layer.transitionOut;
+                setTextTransitionModal({
+                  layerId: layer.id,
+                  side,
+                  titleLabel: `${layer.text.trim() || '텍스트'} · ${
+                    side === 'in' ? '시작 트랜지션 (In)' : '끝 트랜지션 (Out)'
+                  }`,
+                  type: existing?.type ?? 'fade',
+                  durationSec: existing?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION,
+                });
+                setSourceContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+              {sourceContextMenu.side === 'in' ? '시작 트랜지션 설정' : '끝 트랜지션 설정'}
+            </button>
+            <div className="my-1 border-t border-slate-800" />
+            <button
+              type="button"
+              onClick={() => {
+                onDeleteTextLayer(layer.id);
+                setSourceContextMenu(null);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-rose-300 hover:bg-rose-500/15"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              삭제
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 };

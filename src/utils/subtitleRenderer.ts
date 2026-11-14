@@ -106,6 +106,10 @@ function drawClipMedia(
 
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, clip.opacity * extraAlpha));
+  if ((clip.blur ?? 0) > 0) {
+    const scaledBlur = (clip.blur ?? 0) * (canvasW / 1280);
+    ctx.filter = `blur(${scaledBlur.toFixed(1)}px)`;
+  }
   ctx.drawImage(el, offsetX, offsetY, drawW, drawH);
   ctx.restore();
 }

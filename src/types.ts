@@ -81,6 +81,7 @@ export interface VideoClip {
   sourceIn: number;
   sourceDuration: number; // 이미지는 기본 5초, 영상은 원본 길이
   opacity: number; // 0 ~ 1
+  blur?: number; // 0 ~ 24 (px)
   fitToFrame: boolean; // true: 프레임에 맞추기(cover), false: 원본 비율 유지(contain)
   thumbnailUrl?: string;
   transitionIn?: VideoClipTransition;
