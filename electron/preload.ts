@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('file:read-audio', filePath),
   openBackgroundFile: (): Promise<OpenedBackgroundFile | null> =>
     ipcRenderer.invoke('dialog:open-background'),
+  openProjectFile: (): Promise<{ filePath: string; name: string; content: string } | null> =>
+    ipcRenderer.invoke('dialog:open-project'),
+  saveTextFileToPath: (filePath: string, content: string): Promise<string | null> =>
+    ipcRenderer.invoke('file:save-text-to-path', { filePath, content }),
   saveTextFile: (
     defaultName: string,
     content: string,

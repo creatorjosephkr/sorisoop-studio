@@ -168,7 +168,7 @@ async function detectBestVideoEncoder(ffmpegPath: string): Promise<HardwareEncod
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: '소리숲 뮤직비디오 스튜디오',
-    width: 1640,
+    width: 1760,
     height: 1020,
     minWidth: 1120,
     minHeight: 740,
@@ -181,6 +181,7 @@ function createWindow() {
       webSecurity: app.isPackaged,
     },
   });
+  mainWindow.webContents.setAudioMuted(false);
 
   mainWindow.webContents.on('context-menu', (_event, params) => {
     if (params.isEditable) {
@@ -445,6 +446,8 @@ function buildApplicationMenu(): Menu {
   return Menu.buildFromTemplate(template);
 }
 
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 app.whenReady().then(() => {
   app.setAboutPanelOptions({
     applicationName: '소리숲 뮤직비디오 스튜디오',
@@ -550,6 +553,32 @@ ipcMain.handle('dialog:open-background', async () => {
     fileUrl: pathToFileURL(filePath).toString(),
   };
 });
+
+ipcMain.handle('dialog:open-project', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '프로젝트 파일 열기',
+    properties: ['openFile'],
+    filters: [{ name: 'SoriSoop Project', extensions: ['ssproj', 'json'] }],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const filePath = result.filePaths[0];
+  const content = await fs.promises.readFile(filePath, 'utf-8');
+  return {
+    filePath,
+    name: path.basename(filePath),
+    content,
+  };
+});
+
+ipcMain.handle(
+  'file:save-text-to-path',
+  async (_event, { filePath, content }: { filePath: string; content: string }) => {
+    if (!filePath) return null;
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    return filePath;
+  }
+);
 
 ipcMain.handle(
   'dialog:save-text',

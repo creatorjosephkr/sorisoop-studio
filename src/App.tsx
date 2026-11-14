@@ -9,6 +9,7 @@ import {
   Music,
   Palette,
   Save,
+  SaveAll,
   Sliders,
   Trash2,
   Type,
@@ -243,6 +244,7 @@ export function App() {
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showSponsorModal, setShowSponsorModal] = useState(false);
+  const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [appTheme, setAppTheme] = useState<AppTheme>(initialSettings.appTheme ?? 'default');
@@ -380,16 +382,46 @@ export function App() {
   };
 
   const startPlaybackAt = useCallback(
-    (offsetSec: number) => {
+    async (offsetSec: number) => {
       const buffer = audioBufferRef.current;
       if (!buffer) return;
 
-      if (!audioCtxRef.current) {
+      if (
+        !audioCtxRef.current ||
+        audioCtxRef.current.state === 'closed' ||
+        (audioCtxRef.current.state as string) === 'interrupted'
+      ) {
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+          try {
+            await audioCtxRef.current.close();
+          } catch {
+            // ignore
+          }
+        }
         audioCtxRef.current = new AudioContext();
       }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume();
+
+      let ctx = audioCtxRef.current;
+      if (ctx.state !== 'running') {
+        try {
+          await ctx.resume();
+        } catch {
+          // ignore and recreate below if still not running
+        }
+      }
+      if ((ctx.state as string) !== 'running') {
+        try {
+          await ctx.close();
+        } catch {
+          // ignore
+        }
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        try {
+          await ctx.resume();
+        } catch {
+          // ignore
+        }
       }
 
       stopAudioSource();
@@ -399,7 +431,7 @@ export function App() {
       src.buffer = buffer;
 
       const gain = ctx.createGain();
-      gain.gain.value = isMuted ? 0 : volume;
+      gain.gain.value = isMuted ? 0 : Math.max(0, Math.min(1, volume));
       gainNodeRef.current = gain;
 
       const splitter = ctx.createChannelSplitter(2);
@@ -602,7 +634,7 @@ export function App() {
     setCurrentTime(0);
     playOffsetRef.current = 0;
 
-    if (!audioCtxRef.current) {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
       audioCtxRef.current = new AudioContext();
     }
     const decoded = await audioCtxRef.current.decodeAudioData(arrayBuffer.slice(0));
@@ -643,6 +675,7 @@ export function App() {
     setVideoClips([]);
     setSelectedClipId(null);
     setTextLayers([]);
+    setCurrentProjectPath(null);
     setSelectedTextLayerId(null);
   };
 
@@ -1141,7 +1174,7 @@ export function App() {
   };
 
   // 프로젝트(.ssproj) 저장 및 불러오기
-  const handleSaveProject = async () => {
+  const handleSaveProject = async (saveAs = false) => {
     const projectPayload = {
       version: 1,
       savedAt: new Date().toISOString(),
@@ -1161,14 +1194,24 @@ export function App() {
     const baseName = (trackName || 'sorisoop-project').replace(/\.[^.]+$/, '');
     const fileName = `${baseName}.ssproj`;
 
+    // 이미 저장된 경로가 있고 '다른 이름으로 저장'이 아닌 경우 덮어쓰기 경고창 없이 바로 저장
+    if (!saveAs && currentProjectPath && window.electronAPI?.saveTextFileToPath) {
+      const savedPath = await window.electronAPI.saveTextFileToPath(currentProjectPath, json);
+      if (savedPath) {
+        setWhisperStatusText(`프로젝트 저장 완료: ${savedPath.split(/[\\/]/).pop() ?? fileName}`);
+      }
+      return;
+    }
+
     if (window.electronAPI?.saveTextFile) {
       const savedPath = await window.electronAPI.saveTextFile(
-        fileName,
+        currentProjectPath || fileName,
         json,
         'SoriSoop Project',
         'ssproj'
       );
       if (savedPath) {
+        setCurrentProjectPath(savedPath);
         setWhisperStatusText(`프로젝트 저장 완료: ${savedPath.split(/[\\/]/).pop() ?? fileName}`);
       }
       return;
@@ -1184,9 +1227,12 @@ export function App() {
     setWhisperStatusText(`프로젝트 저장 완료: ${fileName}`);
   };
 
-  const handleLoadProjectFile = async (file: File) => {
+  const loadProjectFromContent = async (
+    text: string,
+    fileName: string,
+    filePath?: string | null
+  ) => {
     try {
-      const text = await file.text();
       const parsed = JSON.parse(text);
       if (!parsed || !Array.isArray(parsed.segments)) {
         throw new Error('올바른 .ssproj 프로젝트 파일이 아닙니다.');
@@ -1242,18 +1288,35 @@ export function App() {
       setSegmentsState(parsed.segments);
       segmentsRef.current = parsed.segments;
       setSelectedSegmentId(parsed.segments[0]?.id ?? null);
+      setCurrentProjectPath(filePath ?? null);
       setWhisperStatusText(
         audioRestored
-          ? `프로젝트 불러오기 완료: ${file.name} (음원 및 ${parsed.segments.length}개 가사 구간 복원)`
+          ? `프로젝트 불러오기 완료: ${fileName} (음원 및 ${parsed.segments.length}개 가사 구간 복원)`
           : parsed.audioPath
-            ? `프로젝트 불러오기 완료: ${file.name} (저장된 경로에서 음원을 찾지 못해 노래 파일을 다시 올려주세요)`
-            : `프로젝트 불러오기 완료: ${file.name} (${parsed.segments.length}개 가사 구간)`
+            ? `프로젝트 불러오기 완료: ${fileName} (저장된 경로에서 음원을 찾지 못해 노래 파일을 다시 올려주세요)`
+            : `프로젝트 불러오기 완료: ${fileName} (${parsed.segments.length}개 가사 구간)`
       );
     } catch (err) {
       setWhisperStatusText(
         `프로젝트 불러오기 실패: ${err instanceof Error ? err.message : String(err)}`
       );
     }
+  };
+
+  const handleLoadProjectFile = async (file: File) => {
+    const text = await file.text();
+    await loadProjectFromContent(text, file.name, null);
+  };
+
+  const handleOpenProject = async () => {
+    if (window.electronAPI?.openProjectFile) {
+      const res = await window.electronAPI.openProjectFile();
+      if (res) {
+        await loadProjectFromContent(res.content, res.name, res.filePath);
+      }
+      return;
+    }
+    fileProjectInputRef.current?.click();
   };
 
   const pureLineCount = extractPureLyricLines(rawLyrics).length;
@@ -1337,9 +1400,13 @@ export function App() {
 
           <button
             type="button"
-            onClick={handleSaveProject}
+            onClick={() => void handleSaveProject(false)}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
-            title="프로젝트 저장 (.ssproj)"
+            title={
+              currentProjectPath
+                ? `저장 (${currentProjectPath.split(/[\\/]/).pop()})`
+                : '프로젝트 저장 (.ssproj)'
+            }
           >
             <Save className="h-3.5 w-3.5 text-emerald-400" />
             저장
@@ -1347,7 +1414,17 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => fileProjectInputRef.current?.click()}
+            onClick={() => void handleSaveProject(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
+            title="다른 이름으로 프로젝트 저장 (.ssproj)"
+          >
+            <SaveAll className="h-3.5 w-3.5 text-teal-400" />
+            다른 이름으로 저장
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleOpenProject()}
             className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
             title="프로젝트 불러오기 (.ssproj)"
           >

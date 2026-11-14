@@ -189,6 +189,12 @@ export interface ElectronAPI {
     mediaType: 'image' | 'video';
     fileUrl: string;
   } | null>;
+  openProjectFile?: () => Promise<{
+    filePath: string;
+    name: string;
+    content: string;
+  } | null>;
+  saveTextFileToPath?: (filePath: string, content: string) => Promise<string | null>;
   saveTextFile: (
     defaultName: string,
     content: string,
