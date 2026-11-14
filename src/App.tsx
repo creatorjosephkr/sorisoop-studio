@@ -293,10 +293,14 @@ export function App() {
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioBlobUrlRef = useRef<string | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const leftAnalyserRef = useRef<AnalyserNode | null>(null);
   const rightAnalyserRef = useRef<AnalyserNode | null>(null);
+  const volumeRef = useRef(volume);
+  const isMutedRef = useRef(isMuted);
   const playStartCtxTimeRef = useRef(0);
   const playOffsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -355,6 +359,13 @@ export function App() {
   ]);
 
   const stopAudioSource = useCallback(() => {
+    if (audioElRef.current && !audioElRef.current.paused) {
+      try {
+        audioElRef.current.pause();
+      } catch {
+        // ignore
+      }
+    }
     if (sourceNodeRef.current) {
       try {
         sourceNodeRef.current.stop();
@@ -369,6 +380,44 @@ export function App() {
       rafRef.current = null;
     }
   }, []);
+
+  const guessAudioMimeType = (fileName: string): string => {
+    const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+    const map: Record<string, string> = {
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      m4a: 'audio/mp4',
+      mp4: 'audio/mp4',
+      aac: 'audio/aac',
+      ogg: 'audio/ogg',
+      flac: 'audio/flac',
+      webm: 'audio/webm',
+    };
+    return map[ext] ?? '';
+  };
+
+  const computeBufferChannelDb = (
+    buffer: AudioBuffer,
+    channelIndex: number,
+    timeSec: number,
+    gainScale: number
+  ): number => {
+    if (gainScale <= 0) return -Infinity;
+    const ch = Math.min(channelIndex, buffer.numberOfChannels - 1);
+    const data = buffer.getChannelData(ch);
+    const startSample = Math.max(0, Math.floor(timeSec * buffer.sampleRate));
+    const windowSize = 1024;
+    const endSample = Math.min(data.length, startSample + windowSize);
+    if (endSample <= startSample) return -Infinity;
+    let sum = 0;
+    for (let i = startSample; i < endSample; i++) {
+      const s = data[i] * gainScale;
+      sum += s * s;
+    }
+    const rms = Math.sqrt(sum / (endSample - startSample));
+    if (rms <= 1e-6) return -Infinity;
+    return 20 * Math.log10(rms);
+  };
 
   const computeChannelDb = (analyser: AnalyserNode | null): number => {
     if (!analyser) return -Infinity;
@@ -385,6 +434,53 @@ export function App() {
     async (offsetSec: number) => {
       const buffer = audioBufferRef.current;
       if (!buffer) return;
+
+      stopAudioSource();
+      const clampedOffset = Math.max(0, Math.min(buffer.duration, offsetSec));
+
+      // 1차 재생 경로: HTMLAudioElement (macOS Intel CoreAudio/WebAudio 무음 이슈 우회)
+      const audioEl = audioElRef.current;
+      if (audioEl) {
+        try {
+          audioEl.currentTime = clampedOffset;
+          audioEl.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+          audioEl.muted = isMuted;
+          await audioEl.play();
+          playOffsetRef.current = clampedOffset;
+          setIsPlaying(true);
+
+          const tickEl = () => {
+            const el = audioElRef.current;
+            const buf = audioBufferRef.current;
+            if (!el || !buf || el.paused) return;
+            const nextTime = el.currentTime;
+
+            if (el.ended || nextTime >= buf.duration) {
+              stopAudioSource();
+              setIsPlaying(false);
+              setCurrentTime(0);
+              playOffsetRef.current = 0;
+              setLeftDb(-Infinity);
+              setRightDb(-Infinity);
+              return;
+            }
+
+            setCurrentTime(nextTime);
+            const gainScale = isMutedRef.current ? 0 : Math.max(0, Math.min(1, volumeRef.current));
+            setLeftDb(computeBufferChannelDb(buf, 0, nextTime, gainScale));
+            setRightDb(computeBufferChannelDb(buf, 1, nextTime, gainScale));
+            setSpectrumBins(computeSpectrumFromBuffer(buf, nextTime, 48));
+            setWaveformSamples(extractTimeDomainSlice(buf, nextTime, 160));
+
+            rafRef.current = requestAnimationFrame(tickEl);
+          };
+
+          rafRef.current = requestAnimationFrame(tickEl);
+          return;
+        } catch {
+          // HTMLAudioElement 재생 실패 시 Web Audio API 폴백으로 진행
+        }
+      }
 
       if (
         !audioCtxRef.current ||
@@ -422,9 +518,6 @@ export function App() {
         await resumeWithTimeout(ctx);
       }
 
-      stopAudioSource();
-
-      const clampedOffset = Math.max(0, Math.min(buffer.duration, offsetSec));
       const src = ctx.createBufferSource();
       src.buffer = buffer;
 
@@ -621,8 +714,15 @@ export function App() {
   }, [currentTime, handleSeek, handleTogglePlay, segments, selectedSegmentId]);
 
   useEffect(() => {
+    volumeRef.current = volume;
+    isMutedRef.current = isMuted;
+    const targetGain = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+    if (audioElRef.current) {
+      audioElRef.current.volume = targetGain;
+      audioElRef.current.muted = isMuted;
+    }
     if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = isMuted ? 0 : volume;
+      gainNodeRef.current.gain.value = targetGain;
     }
   }, [volume, isMuted]);
 
@@ -631,6 +731,19 @@ export function App() {
     setIsPlaying(false);
     setCurrentTime(0);
     playOffsetRef.current = 0;
+
+    if (audioBlobUrlRef.current) {
+      URL.revokeObjectURL(audioBlobUrlRef.current);
+      audioBlobUrlRef.current = null;
+    }
+    const blob = new Blob([arrayBuffer], { type: guessAudioMimeType(name) });
+    const blobUrl = URL.createObjectURL(blob);
+    audioBlobUrlRef.current = blobUrl;
+    const audioEl = new Audio(blobUrl);
+    audioEl.preload = 'auto';
+    audioEl.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+    audioEl.muted = isMuted;
+    audioElRef.current = audioEl;
 
     if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
       audioCtxRef.current = new AudioContext();
@@ -653,6 +766,11 @@ export function App() {
       return;
     }
     stopAudioSource();
+    if (audioBlobUrlRef.current) {
+      URL.revokeObjectURL(audioBlobUrlRef.current);
+      audioBlobUrlRef.current = null;
+    }
+    audioElRef.current = null;
     audioBufferRef.current = null;
     setIsPlaying(false);
     setTrackName('업로드 대기 중');
