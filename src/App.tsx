@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  CheckCircle2,
   Download,
   FilePlus,
   FileText,
@@ -245,6 +246,8 @@ export function App() {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showSponsorModal, setShowSponsorModal] = useState(false);
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const saveNoticeTimerRef = useRef<number | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [appTheme, setAppTheme] = useState<AppTheme>(initialSettings.appTheme ?? 'default');
@@ -1327,6 +1330,17 @@ export function App() {
     });
   };
 
+  const showSaveNotice = (msg: string) => {
+    if (saveNoticeTimerRef.current !== null) {
+      window.clearTimeout(saveNoticeTimerRef.current);
+    }
+    setSaveNotice(msg);
+    saveNoticeTimerRef.current = window.setTimeout(() => {
+      setSaveNotice(null);
+      saveNoticeTimerRef.current = null;
+    }, 2400);
+  };
+
   // 프로젝트(.ssproj) 저장 및 불러오기
   const handleSaveProject = async (saveAs = false) => {
     const projectPayload = {
@@ -1352,7 +1366,9 @@ export function App() {
     if (!saveAs && currentProjectPath && window.electronAPI?.saveTextFileToPath) {
       const savedPath = await window.electronAPI.saveTextFileToPath(currentProjectPath, json);
       if (savedPath) {
-        setWhisperStatusText(`프로젝트 저장 완료: ${savedPath.split(/[\\/]/).pop() ?? fileName}`);
+        const savedName = savedPath.split(/[\\/]/).pop() ?? fileName;
+        setWhisperStatusText(`프로젝트 저장 완료: ${savedName}`);
+        showSaveNotice(`저장되었습니다 (${savedName})`);
       }
       return;
     }
@@ -1366,7 +1382,9 @@ export function App() {
       );
       if (savedPath) {
         setCurrentProjectPath(savedPath);
-        setWhisperStatusText(`프로젝트 저장 완료: ${savedPath.split(/[\\/]/).pop() ?? fileName}`);
+        const savedName = savedPath.split(/[\\/]/).pop() ?? fileName;
+        setWhisperStatusText(`프로젝트 저장 완료: ${savedName}`);
+        showSaveNotice(`저장되었습니다 (${savedName})`);
       }
       return;
     }
@@ -1379,6 +1397,7 @@ export function App() {
     a.click();
     URL.revokeObjectURL(url);
     setWhisperStatusText(`프로젝트 저장 완료: ${fileName}`);
+    showSaveNotice(`저장되었습니다 (${fileName})`);
   };
 
   const loadProjectFromContent = async (
@@ -1552,19 +1571,27 @@ export function App() {
             새로 만들기
           </button>
 
-          <button
-            type="button"
-            onClick={() => void handleSaveProject(false)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
-            title={
-              currentProjectPath
-                ? `저장 (${currentProjectPath.split(/[\\/]/).pop()})`
-                : '프로젝트 저장 (.ssproj)'
-            }
-          >
-            <Save className="h-3.5 w-3.5 text-emerald-400" />
-            저장
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => void handleSaveProject(false)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-slate-200 hover:bg-slate-700"
+              title={
+                currentProjectPath
+                  ? `저장 (${currentProjectPath.split(/[\\/]/).pop()})`
+                  : '프로젝트 저장 (.ssproj)'
+              }
+            >
+              <Save className="h-3.5 w-3.5 text-emerald-400" />
+              저장
+            </button>
+            {saveNotice && (
+              <div className="pointer-events-none absolute top-full left-0 z-50 mt-1.5 flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-emerald-500/50 bg-slate-900/95 px-2.5 py-1.5 text-[11px] font-medium text-emerald-300 shadow-xl backdrop-blur">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                <span>{saveNotice}</span>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

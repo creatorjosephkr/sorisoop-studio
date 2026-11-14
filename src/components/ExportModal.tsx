@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Film, FolderOpen, X } from 'lucide-react';
+import { CheckCircle2, Film, FolderOpen, X } from 'lucide-react';
+import successSoundUrl from '../assets/success.mp3';
 import {
   AspectRatio,
   BackgroundMedia,
@@ -69,6 +70,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [progressPct, setProgressPct] = useState(0);
   const [statusMsg, setStatusMsg] = useState('');
   const [exportedPath, setExportedPath] = useState<string | null>(null);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [encoderInfo, setEncoderInfo] = useState<{
     codec: string;
     label: string;
@@ -113,6 +115,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       cancelledRef.current = false;
       setIsRendering(true);
       setExportedPath(null);
+      setShowSuccessAlert(false);
       setProgressPct(0);
       setStatusMsg('저장 위치를 선택하고 FFmpeg 인코더를 준비 중...');
 
@@ -300,6 +303,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           ? '투명 배경 자막 MOV 생성이 완료되었습니다!'
           : '뮤직비디오 MP4 생성이 완료되었습니다!'
       );
+      setShowSuccessAlert(true);
+      try {
+        const sfx = new Audio(successSoundUrl);
+        sfx.volume = 0.85;
+        void sfx.play().catch(() => {});
+      } catch {
+        // ignore
+      }
     } catch (err) {
       if (cancelledRef.current) {
         setStatusMsg('내보내기가 취소되었습니다.');
@@ -487,6 +498,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           )}
         </div>
       </div>
+
+      {showSuccessAlert && exportedPath && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-emerald-500/40 bg-slate-900 p-5 text-center shadow-2xl">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-100">영상 내보내기가 완료되었습니다!</h4>
+            <p className="mt-1.5 break-all rounded-lg bg-slate-950/80 px-3 py-2 font-mono text-[11px] text-emerald-300">
+              {exportedPath.split(/[\\/]/).pop()}
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => window.electronAPI?.showItemInFolder(exportedPath)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
+              >
+                <FolderOpen className="h-4 w-4" />
+                저장된 폴더에서 파일 보기
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSuccessAlert(false)}
+                className="w-full rounded-lg bg-slate-800 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
