@@ -1,0 +1,35 @@
+appId: com.sorisoop.lyrics
+productName: Sorisoop Lyrics Studio
+directories:
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - public/fonts/**/*
+  - package.json
+asarUnpack:
+  - node_modules/ffmpeg-static/**/*
+  - node_modules/onnxruntime-node/**/*
+  - node_modules/@huggingface/transformers/**/*
+fileAssociations:
+  - ext: ssproj
+    name: Sorisoop Project
+    description: Sorisoop Lyrics Studio Project File
+    role: Editor
+    rank: Owner
+mac:
+  icon: app-icon.icns
+  category: public.app-category.video
+  artifactName: SoriSoop_Studio_v${version}-Mac-${arch}.${ext}
+  target:
+    - dmg
+    - zip
+win:
+  icon: app-icon.png
+  artifactName: SoriSoop_Studio_v${version}-Windows.${ext}
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+/* 시스템 폰트 사용을 원천 차단하고, 앱 내장 무료 한글 폰트(Pretendard)만 기본으로 사용 */
+@layer base {
+  html,
+  body,
+  button,
+  input,
+  textarea,
+  select {
+    font-family: "Sorisoop-Pretendard", monospace;
+  }
+}
+
+/* 전체 UI 가독성 향상을 위한 기본 글자 크기 확대 */
+:root {
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+}
+
+.text-\[10px\] {
+  font-size: 11.5px !important;
+}
+
+.text-\[11px\] {
+  font-size: 12.5px !important;
+}
+
+/* 커스텀 스크롤바 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.45);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.7);
+}
+
+/* 앱 색상 테마: 진한 회색 */
+html[data-theme='dark-gray'] {
+  --color-slate-950: #111113;
+  --color-slate-900: #1b1b1e;
+  --color-slate-800: #2a2a2f;
+  --color-slate-700: #3d3d44;
+  --color-slate-600: #52525b;
+  --color-slate-500: #71717a;
+  --color-slate-400: #a1a1aa;
+  --color-slate-300: #d4d4d8;
+  --color-slate-200: #e4e4e7;
+  --color-slate-100: #f4f4f5;
+  --color-slate-50: #fafafa;
+}
+
+/* 앱 색상 테마: 연한 회색 */
+html[data-theme='light-gray'] {
+  --color-slate-950: #dde1e7;
+  --color-slate-900: #eaedf1;
+  --color-slate-800: #cfd5de;
+  --color-slate-700: #aeb7c4;
+  --color-slate-600: #475569;
+  --color-slate-500: #334155;
+  --color-slate-400: #1e293b;
+  --color-slate-300: #0f172a;
+  --color-slate-200: #090d16;
+  --color-slate-100: #020617;
+  --color-slate-50: #000000;
+  --color-cyan-100: #0c4a6e;
+  --color-cyan-200: #0e4f6e;
+  --color-cyan-300: #0c4a6e;
+  --color-cyan-400: #0369a1;
+  --color-cyan-500: #0284c7;
+  --color-emerald-100: #064e3b;
+  --color-emerald-300: #065f46;
+  --color-emerald-400: #047857;
+  --color-amber-100: #78350f;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-indigo-300: #312e81;
+}
+
+/* 앱 색상 테마: 흰색 */
+html[data-theme='white'] {
+  --color-slate-950: #f1f5f9;
+  --color-slate-900: #ffffff;
+  --color-slate-800: #e2e8f0;
+  --color-slate-700: #cbd5e1;
+  --color-slate-600: #475569;
+  --color-slate-500: #334155;
+  --color-slate-400: #1e293b;
+  --color-slate-300: #0f172a;
+  --color-slate-200: #090d16;
+  --color-slate-100: #020617;
+  --color-slate-50: #000000;
+  --color-cyan-100: #0c4a6e;
+  --color-cyan-200: #0e4f6e;
+  --color-cyan-300: #0c4a6e;
+  --color-cyan-400: #0369a1;
+  --color-cyan-500: #0284c7;
+  --color-emerald-100: #064e3b;
+  --color-emerald-300: #065f46;
+  --color-emerald-400: #047857;
+  --color-amber-100: #78350f;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-indigo-300: #312e81;
+}
+
+html[data-theme='light-gray'] ::-webkit-scrollbar-track,
+html[data-theme='white'] ::-webkit-scrollbar-track {
+  background: rgba(203, 213, 225, 0.5);
+}

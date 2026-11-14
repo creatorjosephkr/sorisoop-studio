@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.DS_Store
+*.log
+*.wav
+public/*.zip
+public/KCC-Ganpan/
+public/NEXON_Maplestory/
+public/코레일체/
+spon/

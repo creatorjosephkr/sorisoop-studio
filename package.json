@@ -1,0 +1,35 @@
+{
+  "name": "sorisoop-lyrics",
+  "version": "1.0.0",
+  "description": "로컬 Whisper 가사 싱크 & 무료 한글 폰트 내장 뮤직비디오 제작 스튜디오 (Windows / macOS)",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && tsc -p tsconfig.electron.json",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && tsc -p tsconfig.electron.json && electron .\"",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:all": "node scripts/package-all.mjs",
+    "package": "npm run package:all"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.4.0",
+    "ffmpeg-static": "^5.2.0",
+    "lucide-react": "^0.475.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.9",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "tailwindcss": "^4.0.9",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.1",
+    "wait-on": "^8.0.2"
+  }
+}
