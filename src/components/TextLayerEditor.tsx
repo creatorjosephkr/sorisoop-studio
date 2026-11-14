@@ -1,6 +1,7 @@
 import React from 'react';
 import { Eye, EyeOff, Plus, Sparkles, Trash2, Type } from 'lucide-react';
 import { FontPicker } from './FontPicker';
+import { NumberInput } from './NumberInput';
 import { TextLayer, TextTransitionType } from '../types';
 import {
   DEFAULT_TEXT_TRANSITION_DURATION,
@@ -211,17 +212,16 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] text-slate-400">시작 (초)</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0}
                       max={duration || 9999}
                       step={0.1}
                       value={active.startTime}
-                      onChange={(e) => {
-                        const val = Math.max(0, Number(e.target.value) || 0);
+                      onChange={(val) => {
+                        const clamped = Math.max(0, val);
                         onUpdateLayer(active.id, {
-                          startTime: val,
-                          endTime: Math.max(val + 0.2, active.endTime),
+                          startTime: clamped,
+                          endTime: Math.max(clamped + 0.2, active.endTime),
                         });
                       }}
                       className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
@@ -229,15 +229,14 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400">끝 (초)</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={0.2}
                       max={duration || 9999}
                       step={0.1}
                       value={active.endTime}
-                      onChange={(e) => {
-                        const val = Math.max(active.startTime + 0.2, Number(e.target.value) || 0);
-                        onUpdateLayer(active.id, { endTime: val });
+                      onChange={(val) => {
+                        const clamped = Math.max(active.startTime + 0.2, val);
+                        onUpdateLayer(active.id, { endTime: clamped });
                       }}
                       className="mt-0.5 w-full rounded bg-slate-900 px-2 py-1 font-mono text-slate-100"
                     />
@@ -274,22 +273,18 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
                         ))}
                       </select>
                       {(active.transitionIn?.type ?? 'none') !== 'none' && (
-                        <input
-                          type="number"
+                        <NumberInput
                           min={0.1}
                           max={3}
                           step={0.1}
                           value={
                             active.transitionIn?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION
                           }
-                          onChange={(e) =>
+                          onChange={(val) =>
                             onUpdateLayer(active.id, {
                               transitionIn: {
                                 type: active.transitionIn?.type ?? 'fade',
-                                durationSec: Math.max(
-                                  0.1,
-                                  Math.min(3, Number(e.target.value) || 0.5)
-                                ),
+                                durationSec: Math.max(0.1, Math.min(3, val)),
                               },
                             })
                           }
@@ -321,22 +316,18 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
                         ))}
                       </select>
                       {(active.transitionOut?.type ?? 'none') !== 'none' && (
-                        <input
-                          type="number"
+                        <NumberInput
                           min={0.1}
                           max={3}
                           step={0.1}
                           value={
                             active.transitionOut?.durationSec ?? DEFAULT_TEXT_TRANSITION_DURATION
                           }
-                          onChange={(e) =>
+                          onChange={(val) =>
                             onUpdateLayer(active.id, {
                               transitionOut: {
                                 type: active.transitionOut?.type ?? 'fade',
-                                durationSec: Math.max(
-                                  0.1,
-                                  Math.min(3, Number(e.target.value) || 0.5)
-                                ),
+                                durationSec: Math.max(0.1, Math.min(3, val)),
                               },
                             })
                           }

@@ -29,6 +29,7 @@ import {
   TRANSITION_LABELS,
 } from '../utils/videoClipUtils';
 import { VuMeter } from './VuMeter';
+import { NumberInput } from './NumberInput';
 
 interface WaveformTimelineProps {
   trackName: string;
@@ -847,17 +848,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   </select>
                   {trans.type !== 'none' && (
                     <div className="flex items-center gap-0.5">
-                      <input
-                        type="number"
+                      <NumberInput
                         min={0.1}
                         max={5}
                         step={0.1}
                         value={trans.durationSec}
-                        onChange={(e) =>
+                        onChange={(val) =>
                           onUpdateClip(selClip.id, {
                             transitionIn: {
                               ...trans,
-                              durationSec: Math.max(0.1, Math.min(5, Number(e.target.value) || 1)),
+                              durationSec: val,
                             },
                           })
                         }
@@ -1279,20 +1279,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                           onClick={(e) => e.stopPropagation()}
                           className="absolute top-1 left-2 z-30 flex items-center gap-1 rounded border border-cyan-400 bg-slate-900 px-1.5 py-0.5 text-[10px] shadow-xl"
                         >
-                          <input
-                            type="number"
+                          <NumberInput
                             min={0.1}
                             max={5}
                             step={0.1}
                             value={trans.durationSec}
-                            onChange={(e) =>
+                            onChange={(val) =>
                               onUpdateClip(clip.id, {
                                 transitionIn: {
                                   ...trans,
-                                  durationSec: Math.max(
-                                    0.1,
-                                    Math.min(5, Number(e.target.value) || 1)
-                                  ),
+                                  durationSec: val,
                                 },
                               })
                             }
@@ -1566,16 +1562,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   트랜지션 시간 (기본 1.0초 / 30프레임)
                 </label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0.1}
                     max={5}
                     step={0.1}
                     value={transitionModal.durationSec}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       setTransitionModal({
                         ...transitionModal,
-                        durationSec: Math.max(0.1, Math.min(5, Number(e.target.value) || 1)),
+                        durationSec: val,
                       })
                     }
                     className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-cyan-200"
@@ -1685,16 +1680,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   트랜지션 시간 (초)
                 </label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0.1}
                     max={3}
                     step={0.1}
                     value={textTransitionModal.durationSec}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       setTextTransitionModal({
                         ...textTransitionModal,
-                        durationSec: Math.max(0.1, Math.min(3, Number(e.target.value) || 0.5)),
+                        durationSec: val,
                       })
                     }
                     className="w-24 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-violet-200"
