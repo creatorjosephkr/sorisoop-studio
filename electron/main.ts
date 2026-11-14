@@ -447,6 +447,11 @@ function buildApplicationMenu(): Menu {
 }
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// macOS(특히 인텔 맥)에서 샌드박스 오디오 서비스 프로세스가 CoreAudio 출력을 차단해 무음이 되는 현상 방지
+app.commandLine.appendSwitch(
+  'disable-features',
+  'AudioServiceOutOfProcess,AudioServiceSandbox'
+);
 
 app.whenReady().then(() => {
   app.setAboutPanelOptions({

@@ -402,12 +402,14 @@ export function App() {
       }
 
       let ctx = audioCtxRef.current;
+      const resumeWithTimeout = (targetCtx: AudioContext) =>
+        Promise.race([
+          targetCtx.resume().catch(() => {}),
+          new Promise<void>((resolve) => setTimeout(resolve, 300)),
+        ]);
+
       if (ctx.state !== 'running') {
-        try {
-          await ctx.resume();
-        } catch {
-          // ignore and recreate below if still not running
-        }
+        await resumeWithTimeout(ctx);
       }
       if ((ctx.state as string) !== 'running') {
         try {
@@ -417,11 +419,7 @@ export function App() {
         }
         ctx = new AudioContext();
         audioCtxRef.current = ctx;
-        try {
-          await ctx.resume();
-        } catch {
-          // ignore
-        }
+        await resumeWithTimeout(ctx);
       }
 
       stopAudioSource();
