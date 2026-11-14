@@ -301,6 +301,7 @@ export function App() {
   const rightAnalyserRef = useRef<AnalyserNode | null>(null);
   const volumeRef = useRef(volume);
   const isMutedRef = useRef(isMuted);
+  const playbackRequestIdRef = useRef(0);
   const playStartCtxTimeRef = useRef(0);
   const playOffsetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -359,7 +360,8 @@ export function App() {
   ]);
 
   const stopAudioSource = useCallback(() => {
-    if (audioElRef.current && !audioElRef.current.paused) {
+    playbackRequestIdRef.current += 1;
+    if (audioElRef.current) {
       try {
         audioElRef.current.pause();
       } catch {
@@ -436,6 +438,7 @@ export function App() {
       if (!buffer) return;
 
       stopAudioSource();
+      const reqId = playbackRequestIdRef.current;
       const clampedOffset = Math.max(0, Math.min(buffer.duration, offsetSec));
 
       // 1차 재생 경로: HTMLAudioElement (macOS Intel CoreAudio/WebAudio 무음 이슈 우회)
@@ -446,10 +449,19 @@ export function App() {
           audioEl.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
           audioEl.muted = isMuted;
           await audioEl.play();
+          if (playbackRequestIdRef.current !== reqId) {
+            try {
+              audioEl.pause();
+            } catch {
+              // ignore
+            }
+            return;
+          }
           playOffsetRef.current = clampedOffset;
           setIsPlaying(true);
 
           const tickEl = () => {
+            if (playbackRequestIdRef.current !== reqId) return;
             const el = audioElRef.current;
             const buf = audioBufferRef.current;
             if (!el || !buf || el.paused) return;
@@ -506,6 +518,7 @@ export function App() {
 
       if (ctx.state !== 'running') {
         await resumeWithTimeout(ctx);
+        if (playbackRequestIdRef.current !== reqId) return;
       }
       if ((ctx.state as string) !== 'running') {
         try {
@@ -513,9 +526,11 @@ export function App() {
         } catch {
           // ignore
         }
+        if (playbackRequestIdRef.current !== reqId) return;
         ctx = new AudioContext();
         audioCtxRef.current = ctx;
         await resumeWithTimeout(ctx);
+        if (playbackRequestIdRef.current !== reqId) return;
       }
 
       const src = ctx.createBufferSource();
@@ -555,6 +570,7 @@ export function App() {
       setIsPlaying(true);
 
       const tick = () => {
+        if (playbackRequestIdRef.current !== reqId) return;
         if (!audioCtxRef.current || !audioBufferRef.current) return;
         const elapsed = audioCtxRef.current.currentTime - playStartCtxTimeRef.current;
         const nextTime = playOffsetRef.current + elapsed;
