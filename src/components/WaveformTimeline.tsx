@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   Film,
   Link2,
+  Magnet,
   Maximize2,
   Pause,
   Play,
@@ -126,6 +127,8 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const isRulerDraggingRef = useRef(false);
   const [zoom, setZoom] = useState(1);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
   const [hoverCursor, setHoverCursor] = useState<'pointer' | 'ew-resize' | 'grab' | 'grabbing'>('pointer');
   const [editingTransClipId, setEditingTransClipId] = useState<string | null>(null);
   const [transitionModal, setTransitionModal] = useState<{
@@ -164,7 +167,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
 
   const clipDragRef = useRef<
     | { mode: 'trim-start' | 'trim-end'; id: string; startX: number; origStart: number; origEnd: number }
-    | { mode: 'move'; id: string; startX: number; origStart: number }
+    | { mode: 'move'; id: string; startX: number; origStart: number; origEnd: number }
     | { mode: 'trans' | 'trans-out'; id: string; startX: number; origDur: number }
     | null
   >(null);
@@ -190,6 +193,74 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     }
   }, [currentTime, timelineDuration, zoom]);
 
+  // 타임라인 자석 스냅 대상 지점 수집 (가사 경계 + 영상/이미지 경계 + 특정 구간 텍스트 경계 + 재생헤드)
+  const collectSnapPoints = (exclude?: {
+    clipId?: string;
+    textId?: string;
+    segmentId?: string;
+  }): number[] => {
+    const pts: number[] = [0, currentTime];
+    if (duration > 0) pts.push(duration);
+    for (const s of segments) {
+      if (s.id === exclude?.segmentId) continue;
+      pts.push(s.startTime, s.endTime);
+    }
+    for (const c of videoClips) {
+      if (c.id === exclude?.clipId) continue;
+      pts.push(c.timelineStart, c.timelineEnd);
+    }
+    for (const l of rangedTextLayers) {
+      if (l.id === exclude?.textId) continue;
+      pts.push(l.startTime, l.endTime);
+    }
+    return pts;
+  };
+
+  const snapEdgeTime = (
+    rawSec: number,
+    candidates: number[],
+    thresholdSec: number
+  ): { time: number; snappedTo: number | null } => {
+    let best: number | null = null;
+    let bestDist = thresholdSec;
+    for (const pt of candidates) {
+      const dist = Math.abs(pt - rawSec);
+      if (dist <= bestDist) {
+        bestDist = dist;
+        best = pt;
+      }
+    }
+    return best !== null ? { time: best, snappedTo: best } : { time: rawSec, snappedTo: null };
+  };
+
+  const snapMoveStart = (
+    rawStart: number,
+    len: number,
+    candidates: number[],
+    thresholdSec: number
+  ): { startTime: number; snappedTo: number | null } => {
+    let bestStart = rawStart;
+    let bestSnap: number | null = null;
+    let bestDist = thresholdSec;
+    const rawEnd = rawStart + len;
+
+    for (const pt of candidates) {
+      const startDist = Math.abs(pt - rawStart);
+      if (startDist <= bestDist) {
+        bestDist = startDist;
+        bestStart = pt;
+        bestSnap = pt;
+      }
+      const endDist = Math.abs(pt - rawEnd);
+      if (endDist <= bestDist) {
+        bestDist = endDist;
+        bestStart = pt - len;
+        bestSnap = pt;
+      }
+    }
+    return { startTime: bestStart, snappedTo: bestSnap };
+  };
+
   // 영상 클립 트림 / 이동 / 트랜지션 길이 드래그 처리
   useEffect(() => {
     const onWinMouseMove = (e: MouseEvent) => {
@@ -200,13 +271,43 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       const trackWidth = trackEl.getBoundingClientRect().width;
       if (trackWidth <= 0) return;
       const deltaSec = ((e.clientX - drag.startX) / trackWidth) * timelineDuration;
+      const useSnap = snapEnabled && !e.altKey;
+      const thresholdSec = (8 / trackWidth) * timelineDuration;
 
       if (drag.mode === 'trim-start') {
-        onTrimClipEdge(drag.id, 'start', drag.origStart + deltaSec);
+        const raw = drag.origStart + deltaSec;
+        if (useSnap) {
+          const pts = collectSnapPoints({ clipId: drag.id });
+          const res = snapEdgeTime(raw, pts, thresholdSec);
+          setSnapGuideTime(res.snappedTo);
+          onTrimClipEdge(drag.id, 'start', res.time);
+        } else {
+          setSnapGuideTime(null);
+          onTrimClipEdge(drag.id, 'start', raw);
+        }
       } else if (drag.mode === 'trim-end') {
-        onTrimClipEdge(drag.id, 'end', drag.origEnd + deltaSec);
+        const raw = drag.origEnd + deltaSec;
+        if (useSnap) {
+          const pts = collectSnapPoints({ clipId: drag.id });
+          const res = snapEdgeTime(raw, pts, thresholdSec);
+          setSnapGuideTime(res.snappedTo);
+          onTrimClipEdge(drag.id, 'end', res.time);
+        } else {
+          setSnapGuideTime(null);
+          onTrimClipEdge(drag.id, 'end', raw);
+        }
       } else if (drag.mode === 'move') {
-        onMoveClip(drag.id, drag.origStart + deltaSec);
+        const rawStart = drag.origStart + deltaSec;
+        const len = Math.max(0.25, drag.origEnd - drag.origStart);
+        if (useSnap) {
+          const pts = collectSnapPoints({ clipId: drag.id });
+          const res = snapMoveStart(rawStart, len, pts, thresholdSec);
+          setSnapGuideTime(res.snappedTo);
+          onMoveClip(drag.id, res.startTime);
+        } else {
+          setSnapGuideTime(null);
+          onMoveClip(drag.id, rawStart);
+        }
       } else if (drag.mode === 'trans') {
         const clip = videoClips.find((c) => c.id === drag.id);
         if (!clip) return;
@@ -236,6 +337,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       }
     };
     const onWinMouseUp = () => {
+      if (clipDragRef.current) setSnapGuideTime(null);
       clipDragRef.current = null;
     };
     window.addEventListener('mousemove', onWinMouseMove);
@@ -244,9 +346,20 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       window.removeEventListener('mousemove', onWinMouseMove);
       window.removeEventListener('mouseup', onWinMouseUp);
     };
-  }, [timelineDuration, videoClips, onTrimClipEdge, onMoveClip, onUpdateClip]);
+  }, [
+    timelineDuration,
+    duration,
+    currentTime,
+    snapEnabled,
+    segments,
+    videoClips,
+    rangedTextLayers,
+    onTrimClipEdge,
+    onMoveClip,
+    onUpdateClip,
+  ]);
 
-  // 특정 구간 텍스트 트랙 길이 조절 / 이동 드래그 처리
+  // 특정 구간 텍스트 트랙 길이 조절 / 이동 드래그 처리 (자석 스냅 지원)
   useEffect(() => {
     const onWinMouseMove = (e: MouseEvent) => {
       const drag = textDragRef.current;
@@ -257,23 +370,50 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       if (trackWidth <= 0) return;
       const deltaSec = ((e.clientX - drag.startX) / trackWidth) * timelineDuration;
       const minDur = 0.2;
+      const useSnap = snapEnabled && !e.altKey;
+      const thresholdSec = (8 / trackWidth) * timelineDuration;
+      const pts = useSnap ? collectSnapPoints({ textId: drag.id }) : [];
 
       if (drag.mode === 'move') {
         const len = Math.max(minDur, drag.origEnd - drag.origStart);
-        const nextStart = Math.max(0, Math.min(timelineDuration - len, drag.origStart + deltaSec));
+        let rawStart = drag.origStart + deltaSec;
+        if (useSnap) {
+          const res = snapMoveStart(rawStart, len, pts, thresholdSec);
+          rawStart = res.startTime;
+          setSnapGuideTime(res.snappedTo);
+        } else {
+          setSnapGuideTime(null);
+        }
+        const nextStart = Math.max(0, Math.min(timelineDuration - len, rawStart));
         onUpdateTextLayer(drag.id, {
           startTime: Number(nextStart.toFixed(2)),
           endTime: Number((nextStart + len).toFixed(2)),
         });
       } else if (drag.mode === 'trim-start') {
-        const nextStart = Math.max(0, Math.min(drag.origEnd - minDur, drag.origStart + deltaSec));
+        let rawStart = drag.origStart + deltaSec;
+        if (useSnap) {
+          const res = snapEdgeTime(rawStart, pts, thresholdSec);
+          rawStart = res.time;
+          setSnapGuideTime(res.snappedTo);
+        } else {
+          setSnapGuideTime(null);
+        }
+        const nextStart = Math.max(0, Math.min(drag.origEnd - minDur, rawStart));
         onUpdateTextLayer(drag.id, {
           startTime: Number(nextStart.toFixed(2)),
         });
       } else if (drag.mode === 'trim-end') {
+        let rawEnd = drag.origEnd + deltaSec;
+        if (useSnap) {
+          const res = snapEdgeTime(rawEnd, pts, thresholdSec);
+          rawEnd = res.time;
+          setSnapGuideTime(res.snappedTo);
+        } else {
+          setSnapGuideTime(null);
+        }
         const nextEnd = Math.min(
           timelineDuration,
-          Math.max(drag.origStart + minDur, drag.origEnd + deltaSec)
+          Math.max(drag.origStart + minDur, rawEnd)
         );
         onUpdateTextLayer(drag.id, {
           endTime: Number(nextEnd.toFixed(2)),
@@ -281,6 +421,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       }
     };
     const onWinMouseUp = () => {
+      if (textDragRef.current) setSnapGuideTime(null);
       textDragRef.current = null;
     };
     window.addEventListener('mousemove', onWinMouseMove);
@@ -289,7 +430,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       window.removeEventListener('mousemove', onWinMouseMove);
       window.removeEventListener('mouseup', onWinMouseUp);
     };
-  }, [timelineDuration, onUpdateTextLayer]);
+  }, [
+    timelineDuration,
+    duration,
+    currentTime,
+    snapEnabled,
+    segments,
+    videoClips,
+    rangedTextLayers,
+    onUpdateTextLayer,
+  ]);
 
   // 시간 눈금자 / 재생헤드 드래그 스크러빙
   useEffect(() => {
@@ -451,10 +601,33 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         onBeginDrag();
       }
       const newTime = getTimeFromClientX(e.clientX);
+      const canvasW = canvasRef.current?.getBoundingClientRect().width || 920;
+      const thresholdSec = (8 / canvasW) * timelineDuration;
+      const useSnap = snapEnabled && !e.altKey;
+
       if (dragRef.current.mode === 'resize') {
-        onResizeSegmentEdge(dragRef.current.id, dragRef.current.edge, newTime);
+        if (useSnap) {
+          const pts = collectSnapPoints({ segmentId: dragRef.current.id });
+          const res = snapEdgeTime(newTime, pts, thresholdSec);
+          setSnapGuideTime(res.snappedTo);
+          onResizeSegmentEdge(dragRef.current.id, dragRef.current.edge, res.time);
+        } else {
+          setSnapGuideTime(null);
+          onResizeSegmentEdge(dragRef.current.id, dragRef.current.edge, newTime);
+        }
       } else {
-        onMoveSegment(dragRef.current.id, newTime - dragRef.current.offsetSec);
+        const rawStart = newTime - dragRef.current.offsetSec;
+        const seg = segments.find((s) => s.id === dragRef.current?.id);
+        const len = seg ? Math.max(0.1, seg.endTime - seg.startTime) : 0;
+        if (useSnap && len > 0) {
+          const pts = collectSnapPoints({ segmentId: dragRef.current.id });
+          const res = snapMoveStart(rawStart, len, pts, thresholdSec);
+          setSnapGuideTime(res.snappedTo);
+          onMoveSegment(dragRef.current.id, res.startTime);
+        } else {
+          setSnapGuideTime(null);
+          onMoveSegment(dragRef.current.id, rawStart);
+        }
       }
       return;
     }
@@ -473,6 +646,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       onSeek(getTimeFromClientX(e.clientX));
     }
     dragRef.current = null;
+    setSnapGuideTime(null);
     setHoverCursor('pointer');
   };
 
@@ -534,6 +708,19 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
             className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700"
           >
             전체보기
+          </button>
+          <button
+            type="button"
+            onClick={() => setSnapEnabled((v) => !v)}
+            className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition ${
+              snapEnabled
+                ? 'border-amber-400/60 bg-amber-500/20 text-amber-200'
+                : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+            title="자석 스냅 켜기/끄기 (드래그 중 Alt 키를 누르면 일시 해제)"
+          >
+            <Magnet className="h-3 w-3" />
+            자석 {snapEnabled ? 'ON' : 'OFF'}
           </button>
           <button
             type="button"
@@ -954,6 +1141,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                           id: clip.id,
                           startX: e.clientX,
                           origStart: clip.timelineStart,
+                          origEnd: clip.timelineEnd,
                         };
                       }}
                       onContextMenu={(e) => {
@@ -1219,6 +1407,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                       : 'cursor-pointer'
               }`}
             />
+
+            {/* 자석 스냅 가이드라인 */}
+            {timelineDuration > 0 && snapGuideTime !== null && (
+              <div
+                style={{
+                  left: `${Math.min(100, Math.max(0, (snapGuideTime / timelineDuration) * 100))}%`,
+                }}
+                className="pointer-events-none absolute top-0 bottom-0 z-30 w-[2px] bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.95)]"
+              />
+            )}
 
             {/* 눈금자 + 영상 트랙 + 오디오 트랙 관통 재생헤드 */}
             {timelineDuration > 0 && (
