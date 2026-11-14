@@ -108,9 +108,16 @@ function drawClipMedia(
   ctx.globalAlpha = Math.max(0, Math.min(1, clip.opacity * extraAlpha));
   if ((clip.blur ?? 0) > 0) {
     const scaledBlur = (clip.blur ?? 0) * (canvasW / 1280);
+    // 블러 적용 시 외곽 투명 영역이 섞여 가장자리가 어두워지는 현상을 막기 위해 클리핑 + 여백 확장(overscan) 처리
+    const pad = scaledBlur * 2;
+    ctx.beginPath();
+    ctx.rect(offsetX, offsetY, drawW, drawH);
+    ctx.clip();
     ctx.filter = `blur(${scaledBlur.toFixed(1)}px)`;
+    ctx.drawImage(el, offsetX - pad, offsetY - pad, drawW + pad * 2, drawH + pad * 2);
+  } else {
+    ctx.drawImage(el, offsetX, offsetY, drawW, drawH);
   }
-  ctx.drawImage(el, offsetX, offsetY, drawW, drawH);
   ctx.restore();
 }
 
