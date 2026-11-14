@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ExportModal } from './components/ExportModal';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { SponsorIcon, SponsorModal } from './components/SponsorModal';
 import { UpdateModal } from './components/UpdateModal';
 import { UserGuideModal } from './components/UserGuideModal';
 import appIconUrl from '../app-icon.png';
@@ -241,6 +242,7 @@ export function App() {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showSponsorModal, setShowSponsorModal] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [appTheme, setAppTheme] = useState<AppTheme>(initialSettings.appTheme ?? 'default');
@@ -1376,6 +1378,16 @@ export function App() {
 
           <button
             type="button"
+            onClick={() => setShowSponsorModal(true)}
+            title="개발자 후원"
+            aria-label="개발자 후원"
+            className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-800 text-slate-300 transition hover:bg-slate-700 hover:text-slate-100"
+          >
+            <SponsorIcon className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowExportModal(true)}
             className="ml-1 flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 px-3.5 py-1.5 font-bold text-slate-950 shadow hover:from-cyan-400 hover:to-emerald-400"
           >
@@ -1944,6 +1956,12 @@ export function App() {
         result={updateResult}
         onClose={() => setShowUpdateModal(false)}
         onRecheck={() => void runUpdateCheck()}
+      />
+
+      {/* 개발자 후원 모달 */}
+      <SponsorModal
+        isOpen={showSponsorModal}
+        onClose={() => setShowSponsorModal(false)}
       />
     </div>
   );
