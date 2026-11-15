@@ -577,6 +577,17 @@ ipcMain.handle('file:read-audio', async (_event, filePath: string) => {
   };
 });
 
+function mapBackgroundFileResult(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase();
+  const isVideo = ['.mp4', '.mov', '.webm', '.mkv'].includes(ext);
+  return {
+    filePath,
+    name: path.basename(filePath),
+    mediaType: (isVideo ? 'video' : 'image') as 'video' | 'image',
+    fileUrl: pathToFileURL(filePath).toString(),
+  };
+}
+
 ipcMain.handle('dialog:open-background', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -590,15 +601,23 @@ ipcMain.handle('dialog:open-background', async () => {
     ],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  const filePath = result.filePaths[0];
-  const ext = path.extname(filePath).toLowerCase();
-  const isVideo = ['.mp4', '.mov', '.webm', '.mkv'].includes(ext);
-  return {
-    filePath,
-    name: path.basename(filePath),
-    mediaType: isVideo ? 'video' : 'image',
-    fileUrl: pathToFileURL(filePath).toString(),
-  };
+  return mapBackgroundFileResult(result.filePaths[0]);
+});
+
+ipcMain.handle('dialog:open-backgrounds', async () => {
+  if (!mainWindow) return [];
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '배경 이미지 또는 영상 선택 (복수 선택 가능)',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      {
+        name: 'Media Files',
+        extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'webm', 'mkv'],
+      },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) return [];
+  return result.filePaths.map(mapBackgroundFileResult);
 });
 
 ipcMain.handle('dialog:open-project', async () => {

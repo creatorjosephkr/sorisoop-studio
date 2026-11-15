@@ -87,6 +87,7 @@ export interface VideoClip {
   sourceDuration: number; // 이미지는 기본 5초, 영상은 원본 길이
   opacity: number; // 0 ~ 1
   blur?: number; // 0 ~ 24 (px)
+  playbackRate?: number; // 0.25 ~ 4.0 (기본 1.0)
   fitToFrame: boolean; // true: 프레임에 맞추기(cover), false: 원본 비율 유지(contain)
   thumbnailUrl?: string;
   transitionIn?: VideoClipTransition;
@@ -250,6 +251,14 @@ export interface ElectronAPI {
     mediaType: 'image' | 'video';
     fileUrl: string;
   } | null>;
+  openBackgroundFiles?: () => Promise<
+    Array<{
+      filePath: string;
+      name: string;
+      mediaType: 'image' | 'video';
+      fileUrl: string;
+    }>
+  >;
   openProjectFile?: () => Promise<{
     filePath: string;
     name: string;

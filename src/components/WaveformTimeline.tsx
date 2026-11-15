@@ -67,11 +67,11 @@ interface WaveformTimelineProps {
   onAppendMedia: () => void;
   onTrimClipEdge: (id: string, edge: 'start' | 'end', newTime: number) => void;
   onMoveClip: (id: string, newStartTime: number) => void;
-  onUpdateClip: (id: string, patch: Partial<VideoClip>) => void;
+  onUpdateClip: (id: string, patch: Partial<VideoClip>, recordHistory?: boolean) => void;
   textLayers: TextLayer[];
   selectedTextLayerId: string | null;
   onSelectTextLayer: (id: string | null) => void;
-  onUpdateTextLayer: (id: string, patch: Partial<TextLayer>) => void;
+  onUpdateTextLayer: (id: string, patch: Partial<TextLayer>, recordHistory?: boolean) => void;
   onDeleteTextLayer: (id: string) => void;
   onSplitTextLayer?: (id: string, splitTime: number) => void;
   appTheme?: AppTheme;
@@ -348,12 +348,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         const nextDur = Number(
           Math.max(0.1, Math.min(maxTrans, drag.origDur + deltaSec)).toFixed(2)
         );
-        onUpdateClip(drag.id, {
-          transitionIn: {
-            type: clip.transitionIn?.type ?? 'x-dissolve',
-            durationSec: nextDur,
+        onUpdateClip(
+          drag.id,
+          {
+            transitionIn: {
+              type: clip.transitionIn?.type ?? 'x-dissolve',
+              durationSec: nextDur,
+            },
           },
-        });
+          false
+        );
       } else if (drag.mode === 'trans-out') {
         const clip = videoClips.find((c) => c.id === drag.id);
         if (!clip) return;
@@ -361,12 +365,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         const nextDur = Number(
           Math.max(0.1, Math.min(maxTrans, drag.origDur - deltaSec)).toFixed(2)
         );
-        onUpdateClip(drag.id, {
-          transitionOut: {
-            type: clip.transitionOut?.type ?? 'x-dissolve',
-            durationSec: nextDur,
+        onUpdateClip(
+          drag.id,
+          {
+            transitionOut: {
+              type: clip.transitionOut?.type ?? 'x-dissolve',
+              durationSec: nextDur,
+            },
           },
-        });
+          false
+        );
       }
     };
     const onWinMouseUp = () => {
@@ -418,10 +426,14 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
           setSnapGuideTime(null);
         }
         const nextStart = Math.max(0, Math.min(timelineDuration - len, rawStart));
-        onUpdateTextLayer(drag.id, {
-          startTime: Number(nextStart.toFixed(2)),
-          endTime: Number((nextStart + len).toFixed(2)),
-        });
+        onUpdateTextLayer(
+          drag.id,
+          {
+            startTime: Number(nextStart.toFixed(2)),
+            endTime: Number((nextStart + len).toFixed(2)),
+          },
+          false
+        );
       } else if (drag.mode === 'trim-start') {
         let rawStart = drag.origStart + deltaSec;
         if (useSnap) {
@@ -432,9 +444,13 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
           setSnapGuideTime(null);
         }
         const nextStart = Math.max(0, Math.min(drag.origEnd - minDur, rawStart));
-        onUpdateTextLayer(drag.id, {
-          startTime: Number(nextStart.toFixed(2)),
-        });
+        onUpdateTextLayer(
+          drag.id,
+          {
+            startTime: Number(nextStart.toFixed(2)),
+          },
+          false
+        );
       } else if (drag.mode === 'trim-end') {
         let rawEnd = drag.origEnd + deltaSec;
         if (useSnap) {
@@ -448,9 +464,13 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
           timelineDuration,
           Math.max(drag.origStart + minDur, rawEnd)
         );
-        onUpdateTextLayer(drag.id, {
-          endTime: Number(nextEnd.toFixed(2)),
-        });
+        onUpdateTextLayer(
+          drag.id,
+          {
+            endTime: Number(nextEnd.toFixed(2)),
+          },
+          false
+        );
       }
     };
     const onWinMouseUp = () => {
@@ -876,6 +896,28 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   <span className="w-8 font-mono">{selClip.blur ?? 0}px</span>
                 </label>
 
+                {selClip.mediaType === 'video' && (
+                  <label className="flex items-center gap-1.5 text-[10px] text-emerald-200/80">
+                    <span>속도</span>
+                    <select
+                      value={String(selClip.playbackRate ?? 1)}
+                      onChange={(e) =>
+                        onUpdateClip(selClip.id, {
+                          playbackRate: Number(e.target.value),
+                        })
+                      }
+                      className="rounded border border-emerald-700/70 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200 focus:border-emerald-400 focus:outline-none"
+                      title="선택한 영상 클립의 재생 속도"
+                    >
+                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map((r) => (
+                        <option key={r} value={String(r)}>
+                          {r}x
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
                 <button
                   type="button"
                   onClick={() => onUpdateClip(selClip.id, { fitToFrame: !selClip.fitToFrame })}
@@ -1020,6 +1062,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                             if (e.button !== 0) return;
                             e.stopPropagation();
                             onSelectTextLayer(layer.id);
+                            onBeginDrag();
                             textDragRef.current = {
                               mode: 'move',
                               id: layer.id,
@@ -1113,6 +1156,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                               if (e.button !== 0) return;
                               e.stopPropagation();
                               onSelectTextLayer(layer.id);
+                              onBeginDrag();
                               textDragRef.current = {
                                 mode: 'trim-start',
                                 id: layer.id,
@@ -1131,6 +1175,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                               if (e.button !== 0) return;
                               e.stopPropagation();
                               onSelectTextLayer(layer.id);
+                              onBeginDrag();
                               textDragRef.current = {
                                 mode: 'trim-end',
                                 id: layer.id,
@@ -1197,6 +1242,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                         if (e.button !== 0) return;
                         e.stopPropagation();
                         onSelectClip(clip.id);
+                        onBeginDrag();
                         clipDragRef.current = {
                           mode: 'move',
                           id: clip.id,
@@ -1247,6 +1293,11 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                         <p className="font-mono text-[9px] text-emerald-300/80">
                           {(clip.timelineEnd - clip.timelineStart).toFixed(1)}s ·{' '}
                           {Math.round(clip.opacity * 100)}%
+                          {clip.mediaType === 'video' && (clip.playbackRate ?? 1) !== 1 && (
+                            <span className="ml-1 rounded bg-emerald-400/20 px-1 text-[8px] font-bold text-emerald-200">
+                              {Number((clip.playbackRate ?? 1).toFixed(2))}x
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -1275,6 +1326,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                             onMouseDown={(e) => {
                               e.stopPropagation();
                               onSelectClip(clip.id);
+                              onBeginDrag();
                               clipDragRef.current = {
                                 mode: 'trans',
                                 id: clip.id,
@@ -1315,6 +1367,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                             onMouseDown={(e) => {
                               e.stopPropagation();
                               onSelectClip(clip.id);
+                              onBeginDrag();
                               clipDragRef.current = {
                                 mode: 'trans-out',
                                 id: clip.id,
@@ -1365,6 +1418,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           onSelectClip(clip.id);
+                          onBeginDrag();
                           clipDragRef.current = {
                             mode: 'trim-start',
                             id: clip.id,
@@ -1382,6 +1436,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           onSelectClip(clip.id);
+                          onBeginDrag();
                           clipDragRef.current = {
                             mode: 'trim-end',
                             id: clip.id,
@@ -1900,6 +1955,53 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
                 {sourceContextMenu.side === 'in' ? '시작 트랜지션 설정' : '끝 트랜지션 설정'}
               </button>
+              {clip.mediaType === 'video' && (
+                <>
+                  <div className="my-1 border-t border-slate-800" />
+                  <div className="px-2 py-1">
+                    <div className="mb-1 flex items-center justify-between text-[10px] text-slate-400">
+                      <span>재생 속도</span>
+                      <span className="font-mono text-emerald-300">
+                        {Number((clip.playbackRate ?? 1).toFixed(2))}x
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {[0.5, 0.75, 1, 1.5, 2].map((rate) => {
+                        const active = Math.abs((clip.playbackRate ?? 1) - rate) < 0.01;
+                        return (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => {
+                              onUpdateClip(clip.id, { playbackRate: rate });
+                              setSourceContextMenu(null);
+                            }}
+                            className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition ${
+                              active
+                                ? 'bg-emerald-500 font-bold text-slate-950'
+                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      type="range"
+                      min={0.25}
+                      max={4}
+                      step={0.05}
+                      value={clip.playbackRate ?? 1}
+                      onChange={(e) =>
+                        onUpdateClip(clip.id, { playbackRate: Number(e.target.value) })
+                      }
+                      className="mt-1.5 w-full accent-emerald-400"
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="my-1 border-t border-slate-800" />
               <button
                 type="button"

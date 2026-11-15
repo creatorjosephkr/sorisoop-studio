@@ -41,6 +41,7 @@ interface PreviewStageProps {
   textLayers: TextLayer[];
   selectedTextLayerId: string | null;
   onSelectTextLayer: (id: string) => void;
+  onBeginTextDrag?: () => void;
   onMoveTextLayer: (id: string, x: number, y: number) => void;
   visualEffects: VisualEffectsConfig;
   spectrumBins: Uint8Array | null;
@@ -132,6 +133,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
   textLayers,
   selectedTextLayerId,
   onSelectTextLayer,
+  onBeginTextDrag,
   onMoveTextLayer,
   visualEffects,
   spectrumBins,
@@ -302,9 +304,11 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
         inTransition && prevClip && prevClip.mediaType === 'video' && prevClip.id === id;
 
       if (isCur && activeClip) {
+        const rate = Math.max(0.25, Math.min(4, activeClip.playbackRate ?? 1));
+        if (el.playbackRate !== rate) el.playbackRate = rate;
         const targetTime = Math.max(
           0,
-          activeClip.sourceIn + (currentTime - activeClip.timelineStart)
+          activeClip.sourceIn + (currentTime - activeClip.timelineStart) * rate
         );
         if (isPlaying) {
           if (Math.abs(el.currentTime - targetTime) > 0.35 && Number.isFinite(el.duration)) {
@@ -318,9 +322,10 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           }
         }
       } else if (isPrevInTrans && prevClip) {
+        const prevRate = Math.max(0.25, Math.min(4, prevClip.playbackRate ?? 1));
         const targetTime = Math.max(
           0,
-          prevClip.sourceIn + (prevClip.timelineEnd - prevClip.timelineStart) - 0.04
+          prevClip.sourceIn + (prevClip.timelineEnd - prevClip.timelineStart) * prevRate - 0.04
         );
         if (!el.paused) el.pause();
         if (
@@ -470,6 +475,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
               }
             }
             if (best) {
+              onBeginTextDrag?.();
               onSelectTextLayer(best.id);
               textDragRef.current = { id: best.id };
             }

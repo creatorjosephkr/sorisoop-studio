@@ -53,10 +53,10 @@ import {
 } from './types';
 import {
   DEFAULT_TRANSITION_DURATION,
-  insertVideoClipAt,
   joinVideoClipsGaps,
   moveVideoClip,
   probeMediaClipInfo,
+  setVideoClipPlaybackRate,
   sortClips,
   splitVideoClipAt,
   trimVideoClipEdge,
@@ -147,8 +147,25 @@ export function App() {
   const [segments, setSegmentsState] = useState<LyricSegment[]>([]);
   const segmentsRef = useRef<LyricSegment[]>([]);
   segmentsRef.current = segments;
-  const undoStackRef = useRef<LyricSegment[][]>([]);
-  const redoStackRef = useRef<LyricSegment[][]>([]);
+  const [videoClips, setVideoClipsState] = useState<VideoClip[]>([]);
+  const videoClipsRef = useRef<VideoClip[]>([]);
+  videoClipsRef.current = videoClips;
+  const [textLayers, setTextLayersState] = useState<TextLayer[]>([]);
+  const textLayersRef = useRef<TextLayer[]>([]);
+  textLayersRef.current = textLayers;
+
+  type EditorHistorySnapshot = {
+    segments: LyricSegment[];
+    videoClips: VideoClip[];
+    textLayers: TextLayer[];
+  };
+  const cloneHistorySnapshot = (snap: EditorHistorySnapshot): EditorHistorySnapshot => ({
+    segments: snap.segments.map((s) => ({ ...s })),
+    videoClips: snap.videoClips.map((c) => ({ ...c })),
+    textLayers: snap.textLayers.map((l) => ({ ...l })),
+  });
+  const undoStackRef = useRef<EditorHistorySnapshot[]>([]);
+  const redoStackRef = useRef<EditorHistorySnapshot[]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
@@ -158,8 +175,13 @@ export function App() {
   }, []);
 
   const pushUndoSnapshot = useCallback(
-    (snapshot: LyricSegment[] = segmentsRef.current) => {
-      undoStackRef.current = [...undoStackRef.current.slice(-59), snapshot.map((s) => ({ ...s }))];
+    (snapshot?: Partial<EditorHistorySnapshot>) => {
+      const full = cloneHistorySnapshot({
+        segments: snapshot?.segments ?? segmentsRef.current,
+        videoClips: snapshot?.videoClips ?? videoClipsRef.current,
+        textLayers: snapshot?.textLayers ?? textLayersRef.current,
+      });
+      undoStackRef.current = [...undoStackRef.current.slice(-59), full];
       redoStackRef.current = [];
       syncHistoryFlags();
     },
@@ -174,7 +196,14 @@ export function App() {
       setSegmentsState((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
         if (recordHistory && next !== prev) {
-          undoStackRef.current = [...undoStackRef.current.slice(-59), prev.map((s) => ({ ...s }))];
+          undoStackRef.current = [
+            ...undoStackRef.current.slice(-59),
+            cloneHistorySnapshot({
+              segments: prev,
+              videoClips: videoClipsRef.current,
+              textLayers: textLayersRef.current,
+            }),
+          ];
           redoStackRef.current = [];
           queueMicrotask(syncHistoryFlags);
         }
@@ -185,13 +214,76 @@ export function App() {
     [syncHistoryFlags]
   );
 
+  const setVideoClips = useCallback(
+    (
+      updater: VideoClip[] | ((prev: VideoClip[]) => VideoClip[]),
+      recordHistory = true
+    ) => {
+      setVideoClipsState((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (recordHistory && next !== prev) {
+          undoStackRef.current = [
+            ...undoStackRef.current.slice(-59),
+            cloneHistorySnapshot({
+              segments: segmentsRef.current,
+              videoClips: prev,
+              textLayers: textLayersRef.current,
+            }),
+          ];
+          redoStackRef.current = [];
+          queueMicrotask(syncHistoryFlags);
+        }
+        videoClipsRef.current = next;
+        return next;
+      });
+    },
+    [syncHistoryFlags]
+  );
+
+  const setTextLayers = useCallback(
+    (
+      updater: TextLayer[] | ((prev: TextLayer[]) => TextLayer[]),
+      recordHistory = true
+    ) => {
+      setTextLayersState((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (recordHistory && next !== prev) {
+          undoStackRef.current = [
+            ...undoStackRef.current.slice(-59),
+            cloneHistorySnapshot({
+              segments: segmentsRef.current,
+              videoClips: videoClipsRef.current,
+              textLayers: prev,
+            }),
+          ];
+          redoStackRef.current = [];
+          queueMicrotask(syncHistoryFlags);
+        }
+        textLayersRef.current = next;
+        return next;
+      });
+    },
+    [syncHistoryFlags]
+  );
+
   const handleUndo = useCallback(() => {
     if (undoStackRef.current.length === 0) return;
     const prev = undoStackRef.current[undoStackRef.current.length - 1];
     undoStackRef.current = undoStackRef.current.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current, segmentsRef.current.map((s) => ({ ...s }))];
-    segmentsRef.current = prev;
-    setSegmentsState(prev);
+    redoStackRef.current = [
+      ...redoStackRef.current,
+      cloneHistorySnapshot({
+        segments: segmentsRef.current,
+        videoClips: videoClipsRef.current,
+        textLayers: textLayersRef.current,
+      }),
+    ];
+    segmentsRef.current = prev.segments;
+    videoClipsRef.current = prev.videoClips;
+    textLayersRef.current = prev.textLayers;
+    setSegmentsState(prev.segments);
+    setVideoClipsState(prev.videoClips);
+    setTextLayersState(prev.textLayers);
     syncHistoryFlags();
   }, [syncHistoryFlags]);
 
@@ -199,9 +291,20 @@ export function App() {
     if (redoStackRef.current.length === 0) return;
     const next = redoStackRef.current[redoStackRef.current.length - 1];
     redoStackRef.current = redoStackRef.current.slice(0, -1);
-    undoStackRef.current = [...undoStackRef.current, segmentsRef.current.map((s) => ({ ...s }))];
-    segmentsRef.current = next;
-    setSegmentsState(next);
+    undoStackRef.current = [
+      ...undoStackRef.current,
+      cloneHistorySnapshot({
+        segments: segmentsRef.current,
+        videoClips: videoClipsRef.current,
+        textLayers: textLayersRef.current,
+      }),
+    ];
+    segmentsRef.current = next.segments;
+    videoClipsRef.current = next.videoClips;
+    textLayersRef.current = next.textLayers;
+    setSegmentsState(next.segments);
+    setVideoClipsState(next.videoClips);
+    setTextLayersState(next.textLayers);
     syncHistoryFlags();
   }, [syncHistoryFlags]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
@@ -241,9 +344,7 @@ export function App() {
     }
     return null;
   });
-  const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const pendingMediaModeRef = useRef<'append' | 'insert'>('append');
   const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>(() => {
@@ -929,15 +1030,18 @@ export function App() {
     setSpectrumBins(null);
     setWaveformSamples(null);
     setRawLyrics('');
-    setSegments([]);
+    setSegments([], false);
     setSelectedSegmentId(null);
     setWhisperStatusText('');
     setWhisperProgress(null);
-    setVideoClips([]);
+    setVideoClips([], false);
     setSelectedClipId(null);
-    setTextLayers([]);
+    setTextLayers([], false);
     setCurrentProjectPath(null);
     setSelectedTextLayerId(null);
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    syncHistoryFlags();
   };
 
   const handleAddTextLayer = () => {
@@ -975,8 +1079,12 @@ export function App() {
     setSelectedTextLayerId(id);
   };
 
-  const handleUpdateTextLayer = (id: string, patch: Partial<TextLayer>) => {
-    setTextLayers((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const handleUpdateTextLayer = (
+    id: string,
+    patch: Partial<TextLayer>,
+    recordHistory = true
+  ) => {
+    setTextLayers((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)), recordHistory);
   };
 
   const handleDeleteTextLayer = (id: string) => {
@@ -989,9 +1097,12 @@ export function App() {
     });
   };
 
-  const handleMoveTextLayer = useCallback((id: string, x: number, y: number) => {
-    setTextLayers((prev) => prev.map((l) => (l.id === id ? { ...l, x, y } : l)));
-  }, []);
+  const handleMoveTextLayer = useCallback(
+    (id: string, x: number, y: number) => {
+      setTextLayers((prev) => prev.map((l) => (l.id === id ? { ...l, x, y } : l)), false);
+    },
+    [setTextLayers]
+  );
 
   const handleOpenAudio = async () => {
     if (window.electronAPI) {
@@ -1004,50 +1115,113 @@ export function App() {
     }
   };
 
-  const addMediaToVideoTrack = async (
-    url: string,
-    name: string,
-    mediaType: 'video' | 'image',
-    filePath: string,
+  const addMediaListToVideoTrack = async (
+    items: Array<{
+      url: string;
+      name: string;
+      mediaType: 'video' | 'image';
+      filePath: string;
+    }>,
     mode: 'append' | 'insert'
   ) => {
-    const { sourceDuration, thumbnailUrl } = await probeMediaClipInfo(url, mediaType);
-    const clipId = `vclip-${Date.now()}`;
+    if (items.length === 0) return;
+    const baseTime = Date.now();
+    const probed = await Promise.all(
+      items.map(async (item, index) => {
+        const { sourceDuration, thumbnailUrl } = await probeMediaClipInfo(
+          item.url,
+          item.mediaType
+        );
+        return {
+          ...item,
+          id: `vclip-${baseTime}-${index}`,
+          sourceDuration,
+          thumbnailUrl,
+        };
+      })
+    );
 
     setVideoClips((prev) => {
       const sorted = sortClips(prev);
-      const appendStart = sorted.length > 0 ? sorted[sorted.length - 1].timelineEnd : 0;
-      const clipDur = sourceDuration;
-      const newClip: VideoClip = {
-        id: clipId,
-        name,
-        mediaType,
-        url,
-        filePath,
-        timelineStart: appendStart,
-        timelineEnd: Number((appendStart + clipDur).toFixed(2)),
-        sourceIn: 0,
-        sourceDuration,
-        opacity: 1,
-        fitToFrame: true,
-        thumbnailUrl,
-        transitionIn: { type: 'none', durationSec: DEFAULT_TRANSITION_DURATION },
-      };
+      let cursor =
+        mode === 'insert'
+          ? Math.max(0, Number(currentTime.toFixed(2)))
+          : sorted.length > 0
+            ? sorted[sorted.length - 1].timelineEnd
+            : 0;
+
+      const newClips: VideoClip[] = probed.map((item) => {
+        const timelineStart = Number(cursor.toFixed(2));
+        const timelineEnd = Number((cursor + item.sourceDuration).toFixed(2));
+        cursor = timelineEnd;
+        return {
+          id: item.id,
+          name: item.name,
+          mediaType: item.mediaType,
+          url: item.url,
+          filePath: item.filePath,
+          timelineStart,
+          timelineEnd,
+          sourceIn: 0,
+          sourceDuration: item.sourceDuration,
+          opacity: 1,
+          fitToFrame: true,
+          thumbnailUrl: item.thumbnailUrl,
+          transitionIn: { type: 'none', durationSec: DEFAULT_TRANSITION_DURATION },
+        };
+      });
 
       if (mode === 'insert') {
-        return insertVideoClipAt(sorted, newClip, currentTime);
+        const insertStart = Math.max(0, Number(currentTime.toFixed(2)));
+        const totalDur = Number((cursor - insertStart).toFixed(2));
+        const shifted = sorted.map((c) => {
+          if (c.timelineStart >= insertStart - 0.05) {
+            return {
+              ...c,
+              timelineStart: Number((c.timelineStart + totalDur).toFixed(2)),
+              timelineEnd: Number((c.timelineEnd + totalDur).toFixed(2)),
+            };
+          }
+          return c;
+        });
+        return sortClips([...shifted, ...newClips]);
       }
-      return [...sorted, newClip];
+
+      return [...sorted, ...newClips];
     });
-    setSelectedClipId(clipId);
+    setSelectedClipId(probed[probed.length - 1].id);
   };
 
   const handleOpenBackground = async (mode: 'append' | 'insert' = 'append') => {
     pendingMediaModeRef.current = mode;
     if (window.electronAPI) {
-      const res = await window.electronAPI.openBackgroundFile();
-      if (!res) return;
-      await addMediaToVideoTrack(res.fileUrl, res.name, res.mediaType, res.filePath, mode);
+      if (window.electronAPI.openBackgroundFiles) {
+        const list = await window.electronAPI.openBackgroundFiles();
+        if (!list || list.length === 0) return;
+        await addMediaListToVideoTrack(
+          list.map((res) => ({
+            url: res.fileUrl,
+            name: res.name,
+            mediaType: res.mediaType,
+            filePath: res.filePath,
+          })),
+          mode
+        );
+      } else {
+        const res = await window.electronAPI.openBackgroundFile();
+        if (!res) return;
+        await addMediaListToVideoTrack(
+          [
+            {
+              url: res.fileUrl,
+              name: res.name,
+              mediaType: res.mediaType,
+              filePath: res.filePath,
+            },
+          ],
+          mode
+        );
+      }
     } else {
       fileBgInputRef.current?.click();
     }
@@ -1552,14 +1726,14 @@ export function App() {
       }
 
       if (Array.isArray(parsed.videoClips)) {
-        setVideoClips(parsed.videoClips);
+        setVideoClips(parsed.videoClips, false);
         setSelectedClipId(parsed.videoClips[0]?.id ?? null);
       }
       if (Array.isArray(parsed.textLayers)) {
-        setTextLayers(parsed.textLayers);
+        setTextLayers(parsed.textLayers, false);
         setSelectedTextLayerId(parsed.textLayers[0]?.id ?? null);
       } else {
-        setTextLayers([]);
+        setTextLayers([], false);
         setSelectedTextLayerId(null);
       }
       undoStackRef.current = [];
@@ -1633,13 +1807,18 @@ export function App() {
         ref={fileBgInputRef}
         type="file"
         accept="image/*,video/*"
+        multiple
         className="hidden"
         onChange={async (e) => {
-          const f = e.target.files?.[0];
-          if (!f) return;
-          const url = URL.createObjectURL(f);
-          const mediaType = f.type.startsWith('video') ? 'video' : 'image';
-          await addMediaToVideoTrack(url, f.name, mediaType, '', pendingMediaModeRef.current);
+          const files = Array.from(e.target.files ?? []);
+          if (files.length === 0) return;
+          const items = files.map((f) => ({
+            url: URL.createObjectURL(f),
+            name: f.name,
+            mediaType: (f.type.startsWith('video') ? 'video' : 'image') as 'video' | 'image',
+            filePath: '',
+          }));
+          await addMediaListToVideoTrack(items, pendingMediaModeRef.current);
           e.target.value = '';
         }}
       />
@@ -1852,6 +2031,7 @@ export function App() {
               setSelectedTextLayerId(id);
               setRightTab('text');
             }}
+            onBeginTextDrag={() => pushUndoSnapshot()}
             onMoveTextLayer={handleMoveTextLayer}
             visualEffects={visualEffects}
             spectrumBins={spectrumBins}
@@ -1942,15 +2122,21 @@ export function App() {
             onInsertMediaAtCurrent={() => handleOpenBackground('insert')}
             onAppendMedia={() => handleOpenBackground('append')}
             onTrimClipEdge={(id, edge, newTime) =>
-              setVideoClips((prev) => trimVideoClipEdge(prev, id, edge, newTime))
+              setVideoClips((prev) => trimVideoClipEdge(prev, id, edge, newTime), false)
             }
             onMoveClip={(id, newStartTime) =>
-              setVideoClips((prev) => moveVideoClip(prev, id, newStartTime))
+              setVideoClips((prev) => moveVideoClip(prev, id, newStartTime), false)
             }
-            onUpdateClip={(id, patch) =>
-              setVideoClips((prev) =>
-                prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
-              )
+            onUpdateClip={(id, patch, recordHistory = true) =>
+              setVideoClips((prev) => {
+                if (patch.playbackRate !== undefined) {
+                  const next = setVideoClipPlaybackRate(prev, id, patch.playbackRate);
+                  const { playbackRate: _r, ...rest } = patch;
+                  if (Object.keys(rest).length === 0) return next;
+                  return next.map((c) => (c.id === id ? { ...c, ...rest } : c));
+                }
+                return prev.map((c) => (c.id === id ? { ...c, ...patch } : c));
+              }, recordHistory)
             }
             textLayers={textLayers}
             selectedTextLayerId={selectedTextLayerId}

@@ -231,7 +231,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             };
             if (activeIdx !== -1) {
               const activeClip = sortedClips[activeIdx];
-              await seekClip(activeClip, activeClip.sourceIn + (t - activeClip.timelineStart));
+              const activeRate = Math.max(0.25, Math.min(4, activeClip.playbackRate ?? 1));
+              await seekClip(
+                activeClip,
+                activeClip.sourceIn + (t - activeClip.timelineStart) * activeRate
+              );
               const trans = activeClip.transitionIn;
               if (
                 activeIdx > 0 &&
@@ -240,9 +244,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 t - activeClip.timelineStart < Math.max(0.05, trans.durationSec)
               ) {
                 const prevClip = sortedClips[activeIdx - 1];
+                const prevRate = Math.max(0.25, Math.min(4, prevClip.playbackRate ?? 1));
                 await seekClip(
                   prevClip,
-                  prevClip.sourceIn + (prevClip.timelineEnd - prevClip.timelineStart) - 0.04
+                  prevClip.sourceIn +
+                    (prevClip.timelineEnd - prevClip.timelineStart) * prevRate -
+                    0.04
                 );
               }
             }

@@ -127,7 +127,7 @@ export function splitVideoClipAt(
     ...target,
     timelineEnd: cut,
   };
-  const rightOffset = cut - target.timelineStart;
+  const rightOffset = (cut - target.timelineStart) * (target.playbackRate ?? 1);
   const rightClip: VideoClip = {
     ...target,
     id: `vclip-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -201,24 +201,26 @@ export function trimVideoClipEdge(
   if (idx === -1) return clips;
 
   const cur = { ...sorted[idx] };
+  const rate =
+    cur.mediaType === 'video' ? Math.max(0.25, Math.min(4, cur.playbackRate ?? 1)) : 1;
   const prevEnd = idx > 0 ? sorted[idx - 1].timelineEnd : 0;
   const nextStart = idx < sorted.length - 1 ? sorted[idx + 1].timelineStart : Infinity;
 
   if (edge === 'start') {
     const minStartBySource =
-      cur.mediaType === 'video' ? cur.timelineStart - cur.sourceIn : 0;
+      cur.mediaType === 'video' ? cur.timelineStart - cur.sourceIn / rate : 0;
     const minAllowed = Math.max(0, prevEnd, minStartBySource);
     const maxAllowed = cur.timelineEnd - MIN_CLIP_DURATION;
     const clamped = Number(Math.max(minAllowed, Math.min(maxAllowed, newTime)).toFixed(2));
     const delta = clamped - cur.timelineStart;
     cur.timelineStart = clamped;
     if (cur.mediaType === 'video') {
-      cur.sourceIn = Math.max(0, Number((cur.sourceIn + delta).toFixed(2)));
+      cur.sourceIn = Math.max(0, Number((cur.sourceIn + delta * rate).toFixed(2)));
     }
   } else {
     const maxEndBySource =
       cur.mediaType === 'video'
-        ? cur.timelineStart + Math.max(MIN_CLIP_DURATION, cur.sourceDuration - cur.sourceIn)
+        ? cur.timelineStart + Math.max(MIN_CLIP_DURATION, (cur.sourceDuration - cur.sourceIn) / rate)
         : Infinity;
     const minAllowed = cur.timelineStart + MIN_CLIP_DURATION;
     const maxAllowed = Math.min(nextStart, maxEndBySource);
@@ -227,6 +229,50 @@ export function trimVideoClipEdge(
 
   sorted[idx] = cur;
   return sorted;
+}
+
+/**
+ * 영상 클립의 재생 속도를 변경하고, 속도에 맞춰 타임라인 길이를 조절합니다.
+ * 길이가 늘어나 뒤쪽 클립과 겹칠 경우 뒤쪽 클립들을 함께 뒤로 밀어냅니다.
+ */
+export function setVideoClipPlaybackRate(
+  clips: VideoClip[],
+  clipId: string,
+  rawRate: number
+): VideoClip[] {
+  const newRate = Number(Math.max(0.25, Math.min(4, rawRate)).toFixed(2));
+  const sorted = sortClips(clips);
+  const idx = sorted.findIndex((c) => c.id === clipId);
+  if (idx === -1) return clips;
+
+  const cur = sorted[idx];
+  if (cur.mediaType !== 'video') {
+    sorted[idx] = { ...cur, playbackRate: newRate };
+    return sorted;
+  }
+
+  const oldRate = Math.max(0.25, Math.min(4, cur.playbackRate ?? 1));
+  const oldDur = Math.max(MIN_CLIP_DURATION, cur.timelineEnd - cur.timelineStart);
+  const sourceSpan = oldDur * oldRate;
+  const newDur = Math.max(MIN_CLIP_DURATION, sourceSpan / newRate);
+  const newEnd = Number((cur.timelineStart + newDur).toFixed(2));
+
+  const updated = sorted.map((c, i) =>
+    i === idx ? { ...c, playbackRate: newRate, timelineEnd: newEnd } : c
+  );
+
+  if (idx < updated.length - 1 && newEnd > updated[idx + 1].timelineStart) {
+    const shift = Number((newEnd - updated[idx + 1].timelineStart).toFixed(2));
+    for (let i = idx + 1; i < updated.length; i++) {
+      updated[i] = {
+        ...updated[i],
+        timelineStart: Number((updated[i].timelineStart + shift).toFixed(2)),
+        timelineEnd: Number((updated[i].timelineEnd + shift).toFixed(2)),
+      };
+    }
+  }
+
+  return updated;
 }
 
 /**
