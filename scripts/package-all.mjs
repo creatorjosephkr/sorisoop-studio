@@ -50,16 +50,22 @@ function buildKoreanMacDmg(target) {
   const appOutDir = path.join(releaseDir, target.macOutDir);
   const srcApp = path.join(appOutDir, `${ASCII_APP_NAME}.app`);
   const stageDir = path.join(releaseDir, `.dmg-stage-${target.id}`);
+  const bgDir = path.join(stageDir, '.background');
+  const bgSrc = path.join(rootDir, 'build', 'mac', 'dmg-background.png');
   const destApp = path.join(stageDir, `${KOREAN_APP_NAME}.app`);
+  const rwDmgPath = path.join(releaseDir, `.rw-${target.dmgName}`);
   const dmgPath = path.join(releaseDir, target.dmgName);
 
   fs.rmSync(stageDir, { recursive: true, force: true });
-  fs.mkdirSync(stageDir, { recursive: true });
-  run('cp', ['-R', srcApp, destApp]);
-  fs.symlinkSync('/Applications', path.join(stageDir, 'Applications'));
+  fs.rmSync(rwDmgPath, { force: true });
   fs.rmSync(dmgPath, { force: true });
 
-  console.log(`\n[dmg] Creating ${target.dmgName} with ${KOREAN_APP_NAME}.app...`);
+  fs.mkdirSync(bgDir, { recursive: true });
+  fs.copyFileSync(bgSrc, path.join(bgDir, 'background.png'));
+  run('cp', ['-R', srcApp, destApp]);
+  fs.symlinkSync('/Applications', path.join(stageDir, 'Applications'));
+
+  console.log(`\n[dmg] Creating styled ${target.dmgName} with ${KOREAN_APP_NAME}.app...`);
   run('hdiutil', [
     'create',
     '-volname',
@@ -68,10 +74,67 @@ function buildKoreanMacDmg(target) {
     stageDir,
     '-ov',
     '-format',
-    'UDZO',
-    dmgPath,
+    'UDRW',
+    rwDmgPath,
   ]);
   fs.rmSync(stageDir, { recursive: true, force: true });
+
+  const attachResult = spawnSync(
+    'hdiutil',
+    ['attach', '-readwrite', '-noverify', '-noautoopen', rwDmgPath],
+    { cwd: rootDir, encoding: 'utf8' }
+  );
+  if (attachResult.status !== 0) {
+    throw new Error(`hdiutil attach failed: ${attachResult.stderr}`);
+  }
+  const mountMatch = attachResult.stdout.match(/(\/Volumes\/[^\n\r]+)/);
+  const mountPoint = mountMatch ? mountMatch[1].trim() : `/Volumes/${KOREAN_APP_NAME}`;
+  const diskName = path.basename(mountPoint);
+
+  try {
+    const appleScript = `
+tell application "Finder"
+  tell disk "${diskName}"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {200, 120, 860, 548}
+    set viewOptions to the icon view options of container window
+    set arrangement of viewOptions to not arranged
+    set icon size of viewOptions to 112
+    set text size of viewOptions to 12
+    set background picture of viewOptions to file ".background:background.png"
+    set position of item "${KOREAN_APP_NAME}.app" of container window to {185, 188}
+    set position of item "Applications" of container window to {475, 188}
+    close
+    open
+    update without registering applications
+    delay 2
+    close
+  end tell
+end tell
+`;
+    const osa = spawnSync('osascript', ['-e', appleScript], { cwd: rootDir, encoding: 'utf8' });
+    if (osa.status !== 0) {
+      console.warn(`[dmg] osascript layout warning: ${osa.stderr}`);
+    }
+    run('sync', []);
+  } finally {
+    spawnSync('hdiutil', ['detach', mountPoint, '-force'], { cwd: rootDir });
+  }
+
+  run('hdiutil', [
+    'convert',
+    rwDmgPath,
+    '-format',
+    'UDZO',
+    '-imagekey',
+    'zlib-level=9',
+    '-o',
+    dmgPath,
+  ]);
+  fs.rmSync(rwDmgPath, { force: true });
 }
 
 function run(cmd, args, extraEnv = {}) {
