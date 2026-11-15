@@ -896,6 +896,39 @@ export function App() {
         return;
       }
 
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        const rangedTexts = textLayers.filter((l) => !l.alwaysVisible);
+        if (
+          (selectedTextLayerId || selectedTextLayerIds.length > 0) &&
+          rangedTexts.length > 0
+        ) {
+          e.preventDefault();
+          const ids = rangedTexts.map((l) => l.id);
+          setSelectedTextLayerIds(ids);
+          setSelectedTextLayerId(ids[ids.length - 1] ?? null);
+          setSelectedClipId(null);
+          setSelectedClipIds([]);
+          return;
+        }
+        if (videoClips.length > 0) {
+          e.preventDefault();
+          const sorted = sortClips(videoClips);
+          const ids = sorted.map((c) => c.id);
+          setSelectedClipIds(ids);
+          setSelectedClipId(ids[ids.length - 1] ?? null);
+          setSelectedTextLayerId(null);
+          setSelectedTextLayerIds([]);
+          return;
+        }
+        if (rangedTexts.length > 0) {
+          e.preventDefault();
+          const ids = rangedTexts.map((l) => l.id);
+          setSelectedTextLayerIds(ids);
+          setSelectedTextLayerId(ids[ids.length - 1] ?? null);
+          return;
+        }
+      }
+
       if (e.code === 'Delete' || e.code === 'Backspace') {
         const clipTargets =
           selectedClipIds.length > 0
@@ -991,6 +1024,8 @@ export function App() {
     selectedSegmentId,
     selectedTextLayerId,
     selectedTextLayerIds,
+    textLayers,
+    videoClips,
   ]);
 
   useEffect(() => {
@@ -1072,9 +1107,11 @@ export function App() {
     setWhisperProgress(null);
     setVideoClips([], false);
     setSelectedClipId(null);
+    setSelectedClipIds([]);
     setTextLayers([], false);
     setCurrentProjectPath(null);
     setSelectedTextLayerId(null);
+    setSelectedTextLayerIds([]);
     undoStackRef.current = [];
     redoStackRef.current = [];
     syncHistoryFlags();
@@ -1225,7 +1262,9 @@ export function App() {
 
       return [...sorted, ...newClips];
     });
-    setSelectedClipId(probed[probed.length - 1].id);
+    const lastId = probed[probed.length - 1].id;
+    setSelectedClipId(lastId);
+    setSelectedClipIds([lastId]);
   };
 
   const handleOpenBackground = async (mode: 'append' | 'insert' = 'append') => {
@@ -1763,14 +1802,19 @@ export function App() {
 
       if (Array.isArray(parsed.videoClips)) {
         setVideoClips(parsed.videoClips, false);
-        setSelectedClipId(parsed.videoClips[0]?.id ?? null);
+        const firstClipId = parsed.videoClips[0]?.id ?? null;
+        setSelectedClipId(firstClipId);
+        setSelectedClipIds(firstClipId ? [firstClipId] : []);
       }
       if (Array.isArray(parsed.textLayers)) {
         setTextLayers(parsed.textLayers, false);
-        setSelectedTextLayerId(parsed.textLayers[0]?.id ?? null);
+        const firstTextId = parsed.textLayers[0]?.id ?? null;
+        setSelectedTextLayerId(firstTextId);
+        setSelectedTextLayerIds(firstTextId ? [firstTextId] : []);
       } else {
         setTextLayers([], false);
         setSelectedTextLayerId(null);
+        setSelectedTextLayerIds([]);
       }
       undoStackRef.current = [];
       markCleanOnNextSnapshotRef.current = true;
@@ -2166,18 +2210,26 @@ export function App() {
                 }
               }
               if (opts?.toggle) {
-                setSelectedClipIds((prev) => {
-                  const exists = prev.includes(id);
-                  const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
-                  setSelectedClipId(exists ? (next[next.length - 1] ?? null) : id);
-                  return next;
-                });
+                const exists = selectedClipIds.includes(id);
+                const next = exists
+                  ? selectedClipIds.filter((x) => x !== id)
+                  : [...selectedClipIds, id];
+                setSelectedClipIds(next);
+                setSelectedClipId(exists ? (next[next.length - 1] ?? null) : id);
                 return;
               }
               setSelectedClipId(id);
               setSelectedClipIds([id]);
               setSelectedTextLayerId(null);
               setSelectedTextLayerIds([]);
+            }}
+            onSelectClips={(ids, primaryId) => {
+              setSelectedClipIds(ids);
+              setSelectedClipId(primaryId);
+              if (ids.length > 0) {
+                setSelectedTextLayerId(null);
+                setSelectedTextLayerIds([]);
+              }
             }}
             onSplitClip={() => {
               const target =
@@ -2252,12 +2304,12 @@ export function App() {
                 }
               }
               if (opts?.toggle) {
-                setSelectedTextLayerIds((prev) => {
-                  const exists = prev.includes(id);
-                  const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
-                  setSelectedTextLayerId(exists ? (next[next.length - 1] ?? null) : id);
-                  return next;
-                });
+                const exists = selectedTextLayerIds.includes(id);
+                const next = exists
+                  ? selectedTextLayerIds.filter((x) => x !== id)
+                  : [...selectedTextLayerIds, id];
+                setSelectedTextLayerIds(next);
+                setSelectedTextLayerId(exists ? (next[next.length - 1] ?? null) : id);
                 setRightTab('text');
                 return;
               }
@@ -2266,6 +2318,15 @@ export function App() {
               setSelectedClipId(null);
               setSelectedClipIds([]);
               setRightTab('text');
+            }}
+            onSelectTextLayers={(ids, primaryId) => {
+              setSelectedTextLayerIds(ids);
+              setSelectedTextLayerId(primaryId);
+              if (ids.length > 0) {
+                setSelectedClipId(null);
+                setSelectedClipIds([]);
+                setRightTab('text');
+              }
             }}
             onUpdateTextLayer={handleUpdateTextLayer}
             onDeleteTextLayer={handleDeleteTextLayer}

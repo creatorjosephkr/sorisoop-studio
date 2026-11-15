@@ -62,6 +62,7 @@ interface WaveformTimelineProps {
   selectedClipId: string | null;
   selectedClipIds?: string[];
   onSelectClip: (id: string | null, opts?: { toggle?: boolean; range?: boolean }) => void;
+  onSelectClips?: (ids: string[], primaryId: string | null) => void;
   onSplitClip: () => void;
   onSplitClipAt?: (id: string, splitTime: number) => void;
   onDeleteClip: (id: string) => void;
@@ -76,6 +77,7 @@ interface WaveformTimelineProps {
   selectedTextLayerId: string | null;
   selectedTextLayerIds?: string[];
   onSelectTextLayer: (id: string | null, opts?: { toggle?: boolean; range?: boolean }) => void;
+  onSelectTextLayers?: (ids: string[], primaryId: string | null) => void;
   onUpdateTextLayer: (id: string, patch: Partial<TextLayer>, recordHistory?: boolean) => void;
   onDeleteTextLayer: (id: string) => void;
   onSplitTextLayer?: (id: string, splitTime: number) => void;
@@ -120,6 +122,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   selectedClipId,
   selectedClipIds,
   onSelectClip,
+  onSelectClips,
   onSplitClip,
   onSplitClipAt,
   onDeleteClip,
@@ -134,6 +137,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   selectedTextLayerId,
   selectedTextLayerIds,
   onSelectTextLayer,
+  onSelectTextLayers,
   onUpdateTextLayer,
   onDeleteTextLayer,
   onSplitTextLayer,
@@ -151,6 +155,20 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   const pendingScrollAnchorRef = useRef<{ time: number; screenX: number } | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
+  const [marqueeBox, setMarqueeBox] = useState<{
+    kind: 'clip' | 'text';
+    leftPx: number;
+    widthPx: number;
+  } | null>(null);
+  const marqueeDragRef = useRef<{
+    kind: 'clip' | 'text';
+    startClientX: number;
+    trackLeft: number;
+    trackWidth: number;
+    additive: boolean;
+    moved: boolean;
+  } | null>(null);
+  const suppressTrackClickRef = useRef(false);
   const [hoverCursor, setHoverCursor] = useState<'pointer' | 'ew-resize' | 'grab' | 'grabbing'>('pointer');
   const [editingTransClipId, setEditingTransClipId] = useState<string | null>(null);
   const [sourceContextMenu, setSourceContextMenu] = useState<{
@@ -382,6 +400,67 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [fitAllTimeline, onSeek, timelineDuration, zoomAroundPlayhead]);
+
+  // 타임라인 빈 공간 드래그 박스(마퀴) 다중 선택
+  useEffect(() => {
+    const onWinMouseMove = (e: MouseEvent) => {
+      const m = marqueeDragRef.current;
+      if (!m || displayDuration <= 0 || m.trackWidth <= 0) return;
+      const dx = Math.abs(e.clientX - m.startClientX);
+      if (!m.moved && dx < 4) return;
+      m.moved = true;
+
+      const x1 = Math.max(0, Math.min(m.trackWidth, m.startClientX - m.trackLeft));
+      const x2 = Math.max(0, Math.min(m.trackWidth, e.clientX - m.trackLeft));
+      const leftPx = Math.min(x1, x2);
+      const widthPx = Math.max(2, Math.abs(x2 - x1));
+      setMarqueeBox({ kind: m.kind, leftPx, widthPx });
+
+      const tStart = (leftPx / m.trackWidth) * displayDuration;
+      const tEnd = ((leftPx + widthPx) / m.trackWidth) * displayDuration;
+
+      if (m.kind === 'clip' && onSelectClips) {
+        const hitIds = videoClips
+          .filter((c) => c.timelineEnd > tStart && c.timelineStart < tEnd)
+          .map((c) => c.id);
+        const merged = m.additive
+          ? Array.from(new Set([...(selectedClipIds ?? []), ...hitIds]))
+          : hitIds;
+        onSelectClips(merged, merged[merged.length - 1] ?? null);
+      } else if (m.kind === 'text' && onSelectTextLayers) {
+        const hitIds = rangedTextLayers
+          .filter((l) => l.endTime > tStart && l.startTime < tEnd)
+          .map((l) => l.id);
+        const merged = m.additive
+          ? Array.from(new Set([...(selectedTextLayerIds ?? []), ...hitIds]))
+          : hitIds;
+        onSelectTextLayers(merged, merged[merged.length - 1] ?? null);
+      }
+    };
+    const onWinMouseUp = () => {
+      if (marqueeDragRef.current) {
+        if (marqueeDragRef.current.moved) {
+          suppressTrackClickRef.current = true;
+        }
+        marqueeDragRef.current = null;
+        setMarqueeBox(null);
+      }
+    };
+    window.addEventListener('mousemove', onWinMouseMove);
+    window.addEventListener('mouseup', onWinMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onWinMouseMove);
+      window.removeEventListener('mouseup', onWinMouseUp);
+    };
+  }, [
+    displayDuration,
+    onSelectClips,
+    onSelectTextLayers,
+    rangedTextLayers,
+    selectedClipIds,
+    selectedTextLayerIds,
+    videoClips,
+  ]);
 
   // 확대 상태에서 재생/탐색 시 현재 재생 위치가 항상 보이도록 타임라인 자동 스크롤
   const prevZoomForAutoScrollRef = useRef(zoom);
@@ -1256,7 +1335,28 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
 
             {/* 텍스트 트랙 (특정 구간 텍스트가 1개 이상일 때 각 텍스트마다 개별 트랙으로 표시) */}
             {rangedTextLayers.length > 0 && (
-              <div ref={textTrackRef}>
+              <div
+                ref={textTrackRef}
+                onMouseDown={(e) => {
+                  if (e.button !== 0 || displayDuration <= 0 || !textTrackRef.current) return;
+                  const rect = textTrackRef.current.getBoundingClientRect();
+                  marqueeDragRef.current = {
+                    kind: 'text',
+                    startClientX: e.clientX,
+                    trackLeft: rect.left,
+                    trackWidth: rect.width,
+                    additive: e.shiftKey || e.metaKey || e.ctrlKey,
+                    moved: false,
+                  };
+                }}
+                className="relative"
+              >
+                {marqueeBox && marqueeBox.kind === 'text' && (
+                  <div
+                    style={{ left: marqueeBox.leftPx, width: marqueeBox.widthPx }}
+                    className="pointer-events-none absolute top-0.5 bottom-0.5 z-30 rounded border border-violet-400 bg-violet-400/20"
+                  />
+                )}
                 {rangedTextLayers.map((layer, idx) => {
                   const leftPct =
                     displayDuration > 0 ? (layer.startTime / displayDuration) * 100 : 0;
@@ -1278,7 +1378,13 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   return (
                     <div
                       key={layer.id}
-                      onClick={() => onSelectTextLayer(null)}
+                      onClick={() => {
+                        if (suppressTrackClickRef.current) {
+                          suppressTrackClickRef.current = false;
+                          return;
+                        }
+                        onSelectTextLayer(null);
+                      }}
                       className="relative h-8 border-b border-slate-800 bg-slate-950/90"
                     >
                       <div className="pointer-events-none absolute top-0.5 left-1.5 z-10 flex items-center gap-1 text-[9px] font-semibold text-violet-300/65">
@@ -1291,6 +1397,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                           onMouseDown={(e) => {
                             if (e.button !== 0) return;
                             e.stopPropagation();
+                            const activeEl = document.activeElement as HTMLElement | null;
+                            if (
+                              activeEl &&
+                              (activeEl.tagName === 'INPUT' ||
+                                activeEl.tagName === 'TEXTAREA' ||
+                                activeEl.tagName === 'SELECT')
+                            ) {
+                              activeEl.blur();
+                            }
                             if (e.metaKey || e.ctrlKey || e.shiftKey) {
                               onSelectTextLayer(layer.id, {
                                 toggle: e.metaKey || e.ctrlKey,
@@ -1435,12 +1550,34 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
             {/* 영상 트랙 (오디오 트랙 위) */}
             <div
               ref={videoTrackRef}
+              onMouseDown={(e) => {
+                if (e.button !== 0 || displayDuration <= 0 || !videoTrackRef.current) return;
+                const rect = videoTrackRef.current.getBoundingClientRect();
+                marqueeDragRef.current = {
+                  kind: 'clip',
+                  startClientX: e.clientX,
+                  trackLeft: rect.left,
+                  trackWidth: rect.width,
+                  additive: e.shiftKey || e.metaKey || e.ctrlKey,
+                  moved: false,
+                };
+              }}
               onClick={() => {
+                if (suppressTrackClickRef.current) {
+                  suppressTrackClickRef.current = false;
+                  return;
+                }
                 onSelectClip(null);
                 setEditingTransClipId(null);
               }}
               className="relative h-14 border-b border-slate-800 bg-slate-950/90"
             >
+              {marqueeBox && marqueeBox.kind === 'clip' && (
+                <div
+                  style={{ left: marqueeBox.leftPx, width: marqueeBox.widthPx }}
+                  className="pointer-events-none absolute top-0.5 bottom-0.5 z-30 rounded border border-emerald-400 bg-emerald-400/20"
+                />
+              )}
               {videoClips.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-[11px] text-slate-400">
                   배경 영상 또는 사진(기본 5초 · 150프레임)을 추가하면 영상 트랙이 표시됩니다
@@ -1480,6 +1617,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         e.stopPropagation();
+                        const activeEl = document.activeElement as HTMLElement | null;
+                        if (
+                          activeEl &&
+                          (activeEl.tagName === 'INPUT' ||
+                            activeEl.tagName === 'TEXTAREA' ||
+                            activeEl.tagName === 'SELECT')
+                        ) {
+                          activeEl.blur();
+                        }
                         if (e.metaKey || e.ctrlKey || e.shiftKey) {
                           onSelectClip(clip.id, {
                             toggle: e.metaKey || e.ctrlKey,
