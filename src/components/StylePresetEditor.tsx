@@ -58,7 +58,7 @@ export const StylePresetEditor: React.FC<StylePresetEditorProps> = ({
   };
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-2.5 text-xs">
+    <div className="h-full min-h-0 min-w-0 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable] text-xs">
       {/* 저작권 안전 폰트 안내 배너 */}
       <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-200">
         <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />

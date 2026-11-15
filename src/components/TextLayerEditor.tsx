@@ -37,7 +37,7 @@ export const TextLayerEditor: React.FC<TextLayerEditorProps> = ({
   const active = layers.find((l) => l.id === selectedLayerId) ?? layers[0] ?? null;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-2.5 text-xs">
+    <div className="h-full min-h-0 min-w-0 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable] text-xs">
       {/* 레이어 목록 */}
       <SettingSection
         title={`텍스트 레이어 (${layers.length})`}

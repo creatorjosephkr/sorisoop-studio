@@ -1603,7 +1603,7 @@ export function App() {
   const pureLineCount = extractPureLyricLines(rawLyrics).length;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
       {/* 숨김 파일 입력 (브라우저 폴백용) */}
       <input
         ref={fileAudioInputRef}
@@ -1834,7 +1834,7 @@ export function App() {
       </header>
 
       {/* 메인 스튜디오 영역 */}
-      <main className="grid flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-12">
+      <main className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-12">
         {/* 좌측: 프리뷰 + VU 미터 + 파형 타임라인 */}
         <section className="flex min-h-0 flex-col gap-2.5 overflow-hidden lg:col-span-7 xl:col-span-8">
           <PreviewStage
@@ -2129,7 +2129,7 @@ export function App() {
             )}
 
             {rightTab === 'background' && (
-              <div className="flex h-full min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-2.5 text-xs">
+              <div className="h-full min-h-0 min-w-0 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable] text-xs">
                 {/* 음악 반응형 홀로그램 */}
                 <SettingSection
                   title="홀로그램"
