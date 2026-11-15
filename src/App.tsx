@@ -133,6 +133,9 @@ export function App() {
   const [trackName, setTrackName] = useState('업로드 대기 중');
   const [audioPath, setAudioPath] = useState('');
   const [duration, setDuration] = useState(0);
+  const [audioSourceDuration, setAudioSourceDuration] = useState(0);
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(initialSettings.volume ?? 0.9);
@@ -647,7 +650,9 @@ export function App() {
 
       stopAudioSource();
       const reqId = playbackRequestIdRef.current;
-      const clampedOffset = Math.max(0, Math.min(buffer.duration, offsetSec));
+      const maxPlayDur =
+        durationRef.current > 0 ? Math.min(buffer.duration, durationRef.current) : buffer.duration;
+      const clampedOffset = Math.max(0, Math.min(maxPlayDur, offsetSec));
 
       // 1차 재생 경로: HTMLAudioElement (macOS Intel CoreAudio/WebAudio 무음 이슈 우회)
       const audioEl = audioElRef.current;
@@ -675,7 +680,9 @@ export function App() {
             if (!el || !buf || el.paused) return;
             const nextTime = el.currentTime;
 
-            if (el.ended || nextTime >= buf.duration) {
+            const maxDur =
+              durationRef.current > 0 ? Math.min(buf.duration, durationRef.current) : buf.duration;
+            if (el.ended || nextTime >= maxDur) {
               stopAudioSource();
               setIsPlaying(false);
               setCurrentTime(0);
@@ -783,7 +790,11 @@ export function App() {
         const elapsed = audioCtxRef.current.currentTime - playStartCtxTimeRef.current;
         const nextTime = playOffsetRef.current + elapsed;
 
-        if (nextTime >= audioBufferRef.current.duration) {
+        const maxDur =
+          durationRef.current > 0
+            ? Math.min(audioBufferRef.current.duration, durationRef.current)
+            : audioBufferRef.current.duration;
+        if (nextTime >= maxDur) {
           stopAudioSource();
           setIsPlaying(false);
           setCurrentTime(0);
@@ -998,6 +1009,7 @@ export function App() {
     audioBufferRef.current = decoded;
     setTrackName(name);
     setAudioPath(filePath);
+    setAudioSourceDuration(decoded.duration);
     setDuration(decoded.duration);
     setPeaks(extractWaveformPeaks(decoded, 1200));
   };
@@ -1021,6 +1033,7 @@ export function App() {
     setIsPlaying(false);
     setTrackName('업로드 대기 중');
     setAudioPath('');
+    setAudioSourceDuration(0);
     setDuration(0);
     setCurrentTime(0);
     playOffsetRef.current = 0;
@@ -2046,6 +2059,15 @@ export function App() {
             trackName={trackName}
             peaks={peaks}
             duration={duration}
+            audioSourceDuration={audioSourceDuration}
+            onChangeAudioDuration={(nextDur) => {
+              const maxDur = audioSourceDuration > 0 ? audioSourceDuration : duration;
+              const clamped = Number(Math.max(1, Math.min(maxDur, nextDur)).toFixed(2));
+              setDuration(clamped);
+              if (currentTime > clamped) {
+                handleSeek(clamped);
+              }
+            }}
             currentTime={currentTime}
             isPlaying={isPlaying}
             volume={volume}

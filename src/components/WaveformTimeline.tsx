@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   Film,
@@ -35,6 +35,8 @@ interface WaveformTimelineProps {
   trackName: string;
   peaks: Float32Array | null;
   duration: number;
+  audioSourceDuration?: number;
+  onChangeAudioDuration?: (newDuration: number) => void;
   currentTime: number;
   isPlaying: boolean;
   volume: number;
@@ -88,6 +90,8 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   trackName,
   peaks,
   duration,
+  audioSourceDuration,
+  onChangeAudioDuration,
   currentTime,
   isPlaying,
   volume,
@@ -136,6 +140,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const isRulerDraggingRef = useRef(false);
   const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const pendingScrollAnchorRef = useRef<{ time: number; screenX: number } | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
   const [hoverCursor, setHoverCursor] = useState<'pointer' | 'ew-resize' | 'grab' | 'grabbing'>('pointer');
@@ -186,6 +193,11 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     ...videoClips.map((c) => c.timelineEnd),
     0
   );
+  // 1배 미만(예: 전체보기 0.85x)일 때도 타임라인 영역 100%를 채우고 눈금자가 끝까지 이어지도록 표시 시간축 확장
+  const displayDuration =
+    timelineDuration > 0 && zoom < 1 ? timelineDuration / zoom : timelineDuration;
+  const displayDurationRef = useRef(displayDuration);
+  displayDurationRef.current = displayDuration;
 
   const textDragRef = useRef<
     | {
@@ -211,8 +223,166 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     | null
   >(null);
 
-  // 확대 상태에서 재생/탐색 시 현재 재생 위치가 항상 보이도록 타임라인 자동 스크롤
+  const audioEndDragRef = useRef<{ startX: number; origDur: number } | null>(null);
+
   useEffect(() => {
+    const onWinMouseMove = (e: MouseEvent) => {
+      const drag = audioEndDragRef.current;
+      const canvas = canvasRef.current;
+      if (!drag || !canvas || displayDuration <= 0 || !onChangeAudioDuration) return;
+      const canvasW = canvas.getBoundingClientRect().width;
+      if (canvasW <= 0) return;
+      const deltaSec = ((e.clientX - drag.startX) / canvasW) * displayDuration;
+      let rawEnd = drag.origDur + deltaSec;
+      const useSnap = snapEnabled && !e.altKey;
+      if (useSnap) {
+        const thresholdSec = (8 / canvasW) * displayDuration;
+        const pts = collectSnapPoints();
+        const res = snapEdgeTime(rawEnd, pts, thresholdSec);
+        rawEnd = res.time;
+        setSnapGuideTime(res.snappedTo);
+      } else {
+        setSnapGuideTime(null);
+      }
+      const maxDur =
+        audioSourceDuration && audioSourceDuration > 0 ? audioSourceDuration : drag.origDur;
+      const clamped = Number(Math.max(1, Math.min(maxDur, rawEnd)).toFixed(2));
+      onChangeAudioDuration(clamped);
+    };
+    const onWinMouseUp = () => {
+      if (audioEndDragRef.current) {
+        audioEndDragRef.current = null;
+        setSnapGuideTime(null);
+      }
+    };
+    window.addEventListener('mousemove', onWinMouseMove);
+    window.addEventListener('mouseup', onWinMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onWinMouseMove);
+      window.removeEventListener('mouseup', onWinMouseUp);
+    };
+  });
+
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 16;
+  const FIT_ALL_ZOOM = 0.85;
+
+  const applyZoomWithAnchor = useCallback(
+    (nextZoom: number, anchorTime: number, anchorScreenX: number) => {
+      const clamped = Number(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom)).toFixed(2));
+      pendingScrollAnchorRef.current = {
+        time: Math.max(0, anchorTime),
+        screenX: anchorScreenX,
+      };
+      setZoom(clamped);
+    },
+    []
+  );
+
+  const zoomAroundPlayhead = useCallback(
+    (factor: number) => {
+      const container = scrollContainerRef.current;
+      const effDur = displayDurationRef.current;
+      if (!container || effDur <= 0) {
+        setZoom((z) =>
+          Number(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * factor)).toFixed(2))
+        );
+        return;
+      }
+      const viewW = container.clientWidth;
+      const totalW = Math.max(1, container.scrollWidth);
+      const playX = (currentTime / effDur) * totalW;
+      const currentScreenX = playX - container.scrollLeft;
+      const targetScreenX =
+        currentScreenX >= 0 && currentScreenX <= viewW ? currentScreenX : viewW * 0.5;
+      applyZoomWithAnchor(zoomRef.current * factor, currentTime, targetScreenX);
+    },
+    [applyZoomWithAnchor, currentTime]
+  );
+
+  const fitAllTimeline = useCallback(() => {
+    pendingScrollAnchorRef.current = { time: 0, screenX: 0 };
+    setZoom(FIT_ALL_ZOOM);
+  }, []);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+    pendingScrollAnchorRef.current = null;
+    const container = scrollContainerRef.current;
+    const effDur = displayDurationRef.current;
+    if (!container || effDur <= 0) return;
+    const totalW = container.scrollWidth;
+    const targetX = (anchor.time / effDur) * totalW;
+    container.scrollLeft = Math.max(0, targetX - anchor.screenX);
+  }, [zoom]);
+
+  // Alt(Option) + 마우스 휠: 마우스 포인터 위치 중심으로 확대/축소
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const effDur = displayDurationRef.current;
+      const rect = container.getBoundingClientRect();
+      const mouseXInView = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const totalW = Math.max(1, container.scrollWidth);
+      const contentX = container.scrollLeft + mouseXInView;
+      const anchorTime = effDur > 0 ? (contentX / totalW) * effDur : 0;
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      if (delta === 0) return;
+      const clampedDelta = Math.max(-120, Math.min(120, delta));
+      const factor = Math.exp(-clampedDelta * 0.0028);
+      applyZoomWithAnchor(zoomRef.current * factor, anchorTime, mouseXInView);
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [applyZoomWithAnchor]);
+
+  // 배율 단축키: = (재생헤드 중심 확대), - (재생헤드 중심 축소), \ (전체 길이 85% 맞춤)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.code === 'Equal' || e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        zoomAroundPlayhead(1.25);
+      } else if (e.code === 'Minus' || e.key === '-') {
+        e.preventDefault();
+        zoomAroundPlayhead(1 / 1.25);
+      } else if (e.code === 'Backslash' || e.key === '\\') {
+        e.preventDefault();
+        fitAllTimeline();
+      } else if (e.code === 'Home' || e.key === 'Home') {
+        e.preventDefault();
+        onSeek(0);
+      } else if (e.code === 'End' || e.key === 'End') {
+        e.preventDefault();
+        onSeek(timelineDuration);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fitAllTimeline, onSeek, timelineDuration, zoomAroundPlayhead]);
+
+  // 확대 상태에서 재생/탐색 시 현재 재생 위치가 항상 보이도록 타임라인 자동 스크롤
+  const prevZoomForAutoScrollRef = useRef(zoom);
+  useEffect(() => {
+    const zoomChanged = prevZoomForAutoScrollRef.current !== zoom;
+    prevZoomForAutoScrollRef.current = zoom;
+    if (zoomChanged) return;
     const container = scrollContainerRef.current;
     if (!container || timelineDuration <= 0 || zoom <= 1) return;
     if (dragRef.current || clipDragRef.current || textDragRef.current || isRulerDraggingRef.current) return;
@@ -303,9 +473,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
 
       const trackWidth = trackEl.getBoundingClientRect().width;
       if (trackWidth <= 0) return;
-      const deltaSec = ((e.clientX - drag.startX) / trackWidth) * timelineDuration;
+      const deltaSec = ((e.clientX - drag.startX) / trackWidth) * displayDuration;
       const useSnap = snapEnabled && !e.altKey;
-      const thresholdSec = (8 / trackWidth) * timelineDuration;
+      const thresholdSec = (8 / trackWidth) * displayDuration;
 
       if (drag.mode === 'trim-start') {
         const raw = drag.origStart + deltaSec;
@@ -409,10 +579,10 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
 
       const trackWidth = trackEl.getBoundingClientRect().width;
       if (trackWidth <= 0) return;
-      const deltaSec = ((e.clientX - drag.startX) / trackWidth) * timelineDuration;
+      const deltaSec = ((e.clientX - drag.startX) / trackWidth) * displayDuration;
       const minDur = 0.2;
       const useSnap = snapEnabled && !e.altKey;
-      const thresholdSec = (8 / trackWidth) * timelineDuration;
+      const thresholdSec = (8 / trackWidth) * displayDuration;
       const pts = useSnap ? collectSnapPoints({ textId: drag.id }) : [];
 
       if (drag.mode === 'move') {
@@ -498,11 +668,11 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   useEffect(() => {
     const seekFromClientX = (clientX: number) => {
       const rulerEl = rulerRef.current;
-      if (!rulerEl || timelineDuration <= 0) return;
+      if (!rulerEl || displayDuration <= 0) return;
       const rect = rulerEl.getBoundingClientRect();
       if (rect.width <= 0) return;
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      onSeek(ratio * timelineDuration);
+      onSeek(Math.min(timelineDuration, ratio * displayDuration));
     };
     const onWinMouseMove = (e: MouseEvent) => {
       if (!isRulerDraggingRef.current) return;
@@ -517,7 +687,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       window.removeEventListener('mousemove', onWinMouseMove);
       window.removeEventListener('mouseup', onWinMouseUp);
     };
-  }, [timelineDuration, onSeek]);
+  }, [timelineDuration, displayDuration, onSeek]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -551,10 +721,10 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       return;
     }
 
-    // 세그먼트 블록 하이라이트 (모든 트랙 공통 시간축 timelineDuration 기준)
+    // 세그먼트 블록 하이라이트 (모든 트랙 공통 시간축 displayDuration 기준)
     for (const seg of segments) {
-      const x1 = (seg.startTime / timelineDuration) * width;
-      const x2 = (seg.endTime / timelineDuration) * width;
+      const x1 = (seg.startTime / displayDuration) * width;
+      const x2 = (seg.endTime / displayDuration) * width;
       const isSelected = seg.id === selectedSegmentId;
       const isActive = currentTime >= seg.startTime && currentTime <= seg.endTime;
 
@@ -581,19 +751,39 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       ctx.fillRect(x2 - (isSelected ? 2.5 : 1.5), 0, isSelected ? 2.5 : 1.5, height);
     }
 
-    // 파형 렌더링 (음원 길이 duration만큼만 timelineDuration 비율에 맞춰 배치)
+    // 파형 렌더링 (음원 길이 duration만큼만 displayDuration 비율에 맞춰 배치)
     if (peaks && peaks.length > 0 && duration > 0) {
       const midY = height / 2;
-      const audioWidth = (duration / timelineDuration) * width;
-      const barWidth = audioWidth / peaks.length;
-      for (let i = 0; i < peaks.length; i++) {
+      const audioWidth = (duration / displayDuration) * width;
+      const sourceDur =
+        audioSourceDuration && audioSourceDuration > 0 ? audioSourceDuration : duration;
+      const visibleCount = Math.max(
+        1,
+        Math.min(peaks.length, Math.round((duration / sourceDur) * peaks.length))
+      );
+
+      // 오디오 실제 구간 배경 강조 & 오디오 이후 빈 구간 구분
+      ctx.fillStyle = isLight ? 'rgba(14, 165, 233, 0.05)' : 'rgba(56, 189, 248, 0.05)';
+      ctx.fillRect(0, 0, audioWidth, height);
+      if (audioWidth < width) {
+        ctx.fillStyle = isLight ? 'rgba(148, 163, 184, 0.16)' : 'rgba(2, 6, 23, 0.5)';
+        ctx.fillRect(audioWidth, 0, width - audioWidth, height);
+      }
+
+      const barWidth = audioWidth / visibleCount;
+      for (let i = 0; i < visibleCount; i++) {
         const amp = peaks[i];
         const barH = Math.max(2, amp * (height * 0.78));
         const x = i * barWidth;
-        const t = (i / peaks.length) * duration;
+        const t = (i / visibleCount) * duration;
         ctx.fillStyle = t <= currentTime ? (isLight ? '#0284c7' : '#38bdf8') : '#4f46e5';
         ctx.fillRect(x, midY - barH / 2, Math.max(1, barWidth - 0.5), barH);
       }
+
+      // 오디오 처음(0s) / 끝(duration) 경계선
+      ctx.fillStyle = isLight ? 'rgba(2, 132, 199, 0.85)' : 'rgba(56, 189, 248, 0.85)';
+      ctx.fillRect(0, 0, 2, height);
+      ctx.fillRect(Math.max(0, audioWidth - 2), 0, 2, height);
     } else if (duration <= 0) {
       ctx.fillStyle = emptyTextColor;
       ctx.font = '12px "Sorisoop-Pretendard"';
@@ -602,22 +792,22 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     }
 
     // 재생 헤드
-    const playX = (currentTime / timelineDuration) * width;
+    const playX = (currentTime / displayDuration) * width;
     ctx.fillStyle = '#f43f5e';
     ctx.fillRect(playX - 1, 0, 2, height);
-  }, [peaks, duration, timelineDuration, currentTime, segments, selectedSegmentId, zoom, appTheme]);
+  }, [peaks, duration, audioSourceDuration, timelineDuration, displayDuration, currentTime, segments, selectedSegmentId, zoom, appTheme]);
 
   const getTimeFromClientX = (clientX: number): number => {
     const canvas = canvasRef.current;
-    if (!canvas || timelineDuration <= 0) return 0;
+    if (!canvas || displayDuration <= 0) return 0;
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    return ratio * timelineDuration;
+    return Math.min(timelineDuration, ratio * displayDuration);
   };
 
   const hitTestEdge = (clientX: number): { id: string; edge: 'start' | 'end' } | null => {
     const canvas = canvasRef.current;
-    if (!canvas || timelineDuration <= 0) return null;
+    if (!canvas || displayDuration <= 0) return null;
     const rect = canvas.getBoundingClientRect();
     const clickX = clientX - rect.left;
     const hitTolerancePx = 7;
@@ -628,8 +818,8 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     );
 
     for (const seg of ordered) {
-      const startX = (seg.startTime / timelineDuration) * rect.width;
-      const endX = (seg.endTime / timelineDuration) * rect.width;
+      const startX = (seg.startTime / displayDuration) * rect.width;
+      const endX = (seg.endTime / displayDuration) * rect.width;
       if (Math.abs(clickX - startX) <= hitTolerancePx) {
         return { id: seg.id, edge: 'start' };
       }
@@ -674,7 +864,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       }
       const newTime = getTimeFromClientX(e.clientX);
       const canvasW = canvasRef.current?.getBoundingClientRect().width || 920;
-      const thresholdSec = (8 / canvasW) * timelineDuration;
+      const thresholdSec = (8 / canvasW) * displayDuration;
       const useSnap = snapEnabled && !e.altKey;
 
       if (dragRef.current.mode === 'resize') {
@@ -754,27 +944,28 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.max(1, Number((z - 0.5).toFixed(1))))}
+            onClick={() => zoomAroundPlayhead(1 / 1.25)}
             className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-slate-300 hover:bg-slate-700"
-            title="축소"
+            title="축소 (- / Alt+휠)"
           >
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
-          <span className="min-w-[44px] text-center font-mono text-[11px] text-slate-300">
-            {zoom.toFixed(1)}x
+          <span className="min-w-[46px] text-center font-mono text-[11px] text-slate-300">
+            {Number(zoom.toFixed(2))}x
           </span>
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.min(8, Number((z + 0.5).toFixed(1))))}
+            onClick={() => zoomAroundPlayhead(1.25)}
             className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-slate-300 hover:bg-slate-700"
-            title="확대"
+            title="확대 (= / Alt+휠)"
           >
             <ZoomIn className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
-            onClick={() => setZoom(1)}
+            onClick={fitAllTimeline}
             className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700"
+            title="전체보기 (\ · 타임라인 85% 맞춤)"
           >
             전체보기
           </button>
@@ -985,30 +1176,30 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       <div className="flex items-end gap-2">
         <div
           ref={scrollContainerRef}
-          className="max-h-60 min-w-0 flex-1 overflow-x-auto overflow-y-auto rounded-lg border border-slate-800 bg-slate-950"
+          className="max-h-60 min-w-0 flex-1 overflow-x-scroll overflow-y-auto rounded-lg border border-slate-800 bg-slate-950"
         >
-          <div className="relative" style={{ width: `${100 * zoom}%` }}>
+          <div className="relative" style={{ width: `${Math.max(100, 100 * zoom)}%` }}>
             {/* 통합 시간 눈금자 (Time Ruler) */}
             <div
               ref={rulerRef}
               onMouseDown={(e) => {
-                if (e.button !== 0 || timelineDuration <= 0) return;
+                if (e.button !== 0 || displayDuration <= 0) return;
                 e.preventDefault();
                 isRulerDraggingRef.current = true;
                 const rect = e.currentTarget.getBoundingClientRect();
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                onSeek(ratio * timelineDuration);
+                onSeek(Math.min(timelineDuration, ratio * displayDuration));
               }}
               className="sticky top-0 z-20 h-5 cursor-ew-resize border-b border-slate-800 bg-slate-900/95 select-none"
               title="클릭 또는 드래그하여 재생헤드 이동"
             >
-              {timelineDuration > 0 &&
+              {displayDuration > 0 &&
                 (() => {
                   const stepSec = zoom >= 4 ? 5 : zoom >= 2 ? 10 : 15;
                   const ticks: number[] = [];
-                  for (let t = 0; t <= timelineDuration; t += stepSec) ticks.push(t);
+                  for (let t = 0; t <= displayDuration; t += stepSec) ticks.push(t);
                   return ticks.map((t) => {
-                    const leftPct = (t / timelineDuration) * 100;
+                    const leftPct = (t / displayDuration) * 100;
                     const mm = Math.floor(t / 60);
                     const ss = Math.floor(t % 60);
                     return (
@@ -1031,12 +1222,12 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               <div ref={textTrackRef}>
                 {rangedTextLayers.map((layer, idx) => {
                   const leftPct =
-                    timelineDuration > 0 ? (layer.startTime / timelineDuration) * 100 : 0;
+                    displayDuration > 0 ? (layer.startTime / displayDuration) * 100 : 0;
                   const widthPct =
-                    timelineDuration > 0
+                    displayDuration > 0
                       ? Math.max(
                           1.2,
-                          ((layer.endTime - layer.startTime) / timelineDuration) * 100
+                          ((layer.endTime - layer.startTime) / displayDuration) * 100
                         )
                       : 0;
                   const isSelected = layer.id === selectedTextLayerId;
@@ -1209,12 +1400,12 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   배경 영상 또는 사진(기본 5초 · 150프레임)을 추가하면 영상 트랙이 표시됩니다
                 </div>
               ) : (
-                timelineDuration > 0 &&
+                displayDuration > 0 &&
                 videoClips.map((clip) => {
-                  const leftPct = (clip.timelineStart / timelineDuration) * 100;
+                  const leftPct = (clip.timelineStart / displayDuration) * 100;
                   const widthPct = Math.max(
                     0.5,
-                    ((clip.timelineEnd - clip.timelineStart) / timelineDuration) * 100
+                    ((clip.timelineEnd - clip.timelineStart) / displayDuration) * 100
                   );
                   const isSelected = clip.id === selectedClipId;
                   const trans = clip.transitionIn;
@@ -1222,7 +1413,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   const transWidthPct = hasTrans
                     ? Math.min(
                         widthPct,
-                        (trans.durationSec / Math.max(0.1, timelineDuration)) * 100
+                        (trans.durationSec / Math.max(0.1, displayDuration)) * 100
                       )
                     : 0;
                   const transOut = clip.transitionOut;
@@ -1230,7 +1421,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   const transOutWidthPct = hasTransOut
                     ? Math.min(
                         widthPct,
-                        (transOut.durationSec / Math.max(0.1, timelineDuration)) * 100
+                        (transOut.durationSec / Math.max(0.1, displayDuration)) * 100
                       )
                     : 0;
 
@@ -1454,7 +1645,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               )}
 
               {/* 클립 이어진 경계(접합부) 클릭 버튼 → 트랜지션 적용 창 열기 */}
-              {timelineDuration > 0 &&
+              {displayDuration > 0 &&
                 (() => {
                   const sorted = [...videoClips].sort(
                     (a, b) => a.timelineStart - b.timelineStart
@@ -1464,7 +1655,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                     if (Math.abs(nextClip.timelineStart - prevClip.timelineEnd) > 0.15) {
                       return null;
                     }
-                    const leftPct = (nextClip.timelineStart / timelineDuration) * 100;
+                    const leftPct = (nextClip.timelineStart / displayDuration) * 100;
                     const activeTrans = nextClip.transitionIn;
                     const isActive = activeTrans && activeTrans.type !== 'none';
                     return (
@@ -1502,41 +1693,83 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 })()}
             </div>
 
-            {/* 오디오 트랙 캔버스 */}
-            <canvas
-              ref={canvasRef}
-              width={Math.round(920 * zoom)}
-              height={96}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUpOrLeave}
-              onMouseLeave={handleMouseUpOrLeave}
-              className={`block h-24 w-full ${
-                hoverCursor === 'ew-resize'
-                  ? 'cursor-ew-resize'
-                  : hoverCursor === 'grabbing'
-                    ? 'cursor-grabbing'
-                    : hoverCursor === 'grab'
-                      ? 'cursor-grab'
-                      : 'cursor-pointer'
-              }`}
-            />
+            {/* 오디오 트랙 캔버스 + 처음/끝 경계 및 길이 조절 핸들 */}
+            <div className="relative">
+              <canvas
+                ref={canvasRef}
+                width={Math.round(920 * Math.max(1, zoom))}
+                height={96}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUpOrLeave}
+                onMouseLeave={handleMouseUpOrLeave}
+                className={`block h-24 w-full ${
+                  hoverCursor === 'ew-resize'
+                    ? 'cursor-ew-resize'
+                    : hoverCursor === 'grabbing'
+                      ? 'cursor-grabbing'
+                      : hoverCursor === 'grab'
+                        ? 'cursor-grab'
+                        : 'cursor-pointer'
+                }`}
+              />
+
+              {duration > 0 && displayDuration > 0 && (
+                <>
+                  {/* 오디오 시작/끝 경계 배지 */}
+                  <div className="pointer-events-none absolute top-1 left-1.5 z-10 rounded bg-sky-950/80 px-1 py-0.5 font-mono text-[9px] font-semibold text-sky-300 border border-sky-500/40">
+                    0:00
+                  </div>
+                  <div
+                    style={{
+                      left: `${Math.min(100, (duration / displayDuration) * 100)}%`,
+                    }}
+                    className="pointer-events-none absolute top-1 z-10 -translate-x-full pr-2"
+                  >
+                    <span className="rounded bg-sky-950/85 px-1 py-0.5 font-mono text-[9px] font-semibold text-sky-300 border border-sky-500/40">
+                      {Math.floor(duration / 60)}:
+                      {String(Math.floor(duration % 60)).padStart(2, '0')}
+                    </span>
+                  </div>
+
+                  {/* 오디오 오른쪽 끝 길이 조절(트림) 드래그 핸들 */}
+                  {onChangeAudioDuration && (
+                    <div
+                      style={{
+                        left: `${Math.min(100, (duration / displayDuration) * 100)}%`,
+                      }}
+                      onMouseDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        audioEndDragRef.current = { startX: e.clientX, origDur: duration };
+                      }}
+                      className="group absolute top-0 bottom-0 z-20 w-3 -translate-x-1/2 cursor-ew-resize flex items-center justify-center"
+                      title={`드래그하여 오디오 길이 조절 (현재 ${duration.toFixed(1)}s / 원본 ${(audioSourceDuration || duration).toFixed(1)}s)`}
+                    >
+                      <div className="h-full w-0.5 bg-sky-400/90 transition group-hover:w-1 group-hover:bg-sky-300" />
+                      <div className="absolute h-6 w-2 rounded-sm border border-sky-300/80 bg-sky-500/90 shadow opacity-85 transition group-hover:opacity-100" />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             {/* 자석 스냅 가이드라인 */}
-            {timelineDuration > 0 && snapGuideTime !== null && (
+            {displayDuration > 0 && snapGuideTime !== null && (
               <div
                 style={{
-                  left: `${Math.min(100, Math.max(0, (snapGuideTime / timelineDuration) * 100))}%`,
+                  left: `${Math.min(100, Math.max(0, (snapGuideTime / displayDuration) * 100))}%`,
                 }}
                 className="pointer-events-none absolute top-0 bottom-0 z-30 w-[2px] bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.95)]"
               />
             )}
 
             {/* 눈금자 + 영상 트랙 + 오디오 트랙 관통 재생헤드 */}
-            {timelineDuration > 0 && (
+            {displayDuration > 0 && (
               <div
                 style={{
-                  left: `${Math.min(100, Math.max(0, (currentTime / timelineDuration) * 100))}%`,
+                  left: `${Math.min(100, Math.max(0, (currentTime / displayDuration) * 100))}%`,
                 }}
                 className="pointer-events-none absolute top-0 bottom-0 z-30 w-[2px] bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
               >
@@ -1858,7 +2091,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       {/* 타임라인 소스 우클릭 컨텍스트 메뉴 */}
       {sourceContextMenu && (() => {
         const menuW = 196;
-        const menuH = 220;
+        const menuH = sourceContextMenu.kind === 'clip' ? 330 : 220;
         const left = Math.min(sourceContextMenu.x, Math.max(8, window.innerWidth - menuW - 8));
         const top = Math.min(sourceContextMenu.y, Math.max(8, window.innerHeight - menuH - 8));
 
@@ -1881,7 +2114,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               style={{ left, top }}
               onMouseDown={(e) => e.stopPropagation()}
               onContextMenu={(e) => e.preventDefault()}
-              className="fixed z-50 w-48 rounded-xl border border-slate-700 bg-slate-900/95 p-1.5 text-xs text-slate-200 shadow-2xl backdrop-blur"
+              className="fixed z-50 max-h-[calc(100vh-16px)] w-48 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900/95 p-1.5 text-xs text-slate-200 shadow-2xl backdrop-blur"
             >
               <button
                 type="button"
