@@ -277,31 +277,57 @@ export function setVideoClipPlaybackRate(
 
 /**
  * 클립을 타임라인 상에서 좌우로 이동시킵니다.
+ * 기존 클립을 건너뛰어 왼쪽/오른쪽의 다른 빈 공간으로도 이동할 수 있습니다.
  */
 export function moveVideoClip(
   clips: VideoClip[],
   clipId: string,
   newStartTime: number
 ): VideoClip[] {
-  const sorted = sortClips(clips);
-  const idx = sorted.findIndex((c) => c.id === clipId);
-  if (idx === -1) return clips;
+  const cur = clips.find((c) => c.id === clipId);
+  if (!cur) return clips;
 
-  const cur = { ...sorted[idx] };
-  const dur = cur.timelineEnd - cur.timelineStart;
-  const minStart = idx > 0 ? sorted[idx - 1].timelineEnd : 0;
-  const maxEnd = idx < sorted.length - 1 ? sorted[idx + 1].timelineStart : Infinity;
-  const maxStart = Number.isFinite(maxEnd) ? maxEnd - dur : Infinity;
+  const dur = Math.max(MIN_CLIP_DURATION, cur.timelineEnd - cur.timelineStart);
+  const others = sortClips(clips.filter((c) => c.id !== clipId));
+  const desired = Math.max(0, newStartTime);
 
-  let clampedStart = Math.max(minStart, Math.min(maxStart, newStartTime));
-  // 인접 클립 경계(0.15초 이내) 자석 스냅
-  if (Math.abs(clampedStart - minStart) < 0.15) clampedStart = minStart;
-  if (Number.isFinite(maxStart) && Math.abs(clampedStart - maxStart) < 0.15) {
-    clampedStart = maxStart;
+  // 다른 클립들과 겹치지 않고 현재 클립(dur)이 들어갈 수 있는 모든 유효 구간 [minStart, maxStart] 계산
+  const slots: Array<{ min: number; max: number }> = [];
+  if (others.length === 0) {
+    slots.push({ min: 0, max: Infinity });
+  } else {
+    if (others[0].timelineStart >= dur - 0.01) {
+      slots.push({ min: 0, max: Math.max(0, others[0].timelineStart - dur) });
+    }
+    for (let i = 0; i < others.length - 1; i++) {
+      const gapStart = others[i].timelineEnd;
+      const gapEnd = others[i + 1].timelineStart;
+      if (gapEnd - gapStart >= dur - 0.01) {
+        slots.push({ min: gapStart, max: Math.max(gapStart, gapEnd - dur) });
+      }
+    }
+    slots.push({ min: others[others.length - 1].timelineEnd, max: Infinity });
   }
 
-  cur.timelineStart = Number(clampedStart.toFixed(2));
-  cur.timelineEnd = Number((clampedStart + dur).toFixed(2));
-  sorted[idx] = cur;
-  return sorted;
+  let bestStart = desired;
+  let bestDist = Infinity;
+  for (const slot of slots) {
+    let candidate = Math.max(slot.min, Math.min(slot.max, desired));
+    if (Math.abs(candidate - slot.min) < 0.15) candidate = slot.min;
+    if (Number.isFinite(slot.max) && Math.abs(candidate - slot.max) < 0.15) {
+      candidate = slot.max;
+    }
+    const dist = Math.abs(candidate - desired);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestStart = candidate;
+    }
+  }
+
+  const moved: VideoClip = {
+    ...cur,
+    timelineStart: Number(bestStart.toFixed(2)),
+    timelineEnd: Number((bestStart + dur).toFixed(2)),
+  };
+  return sortClips([...others, moved]);
 }

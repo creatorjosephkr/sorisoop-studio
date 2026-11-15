@@ -1195,7 +1195,7 @@ export function App() {
       mediaType: 'video' | 'image';
       filePath: string;
     }>,
-    mode: 'append' | 'insert'
+    _mode: 'append' | 'insert'
   ) => {
     if (items.length === 0) return;
     const baseTime = Date.now();
@@ -1214,15 +1214,22 @@ export function App() {
       })
     );
 
-    setVideoClips((prev) => {
-      const sorted = sortClips(prev);
-      let cursor =
-        mode === 'insert'
-          ? Math.max(0, Number(currentTime.toFixed(2)))
-          : sorted.length > 0
-            ? sorted[sorted.length - 1].timelineEnd
-            : 0;
+    const insertStart = Math.max(0, Number(currentTime.toFixed(2)));
+    const totalAddedDur = probed.reduce((acc, item) => acc + item.sourceDuration, 0);
+    const addedEndTime = Number((insertStart + totalAddedDur).toFixed(2));
 
+    setVideoClips((prev) => {
+      let baseClips = sortClips(prev);
+
+      // 재생헤드가 기존 클립 중간에 놓여 있으면 해당 지점에서 분할 후 배치
+      const spanning = baseClips.find(
+        (c) => c.timelineStart < insertStart - 0.05 && c.timelineEnd > insertStart + 0.05
+      );
+      if (spanning) {
+        baseClips = splitVideoClipAt(baseClips, spanning.id, insertStart);
+      }
+
+      let cursor = insertStart;
       const newClips: VideoClip[] = probed.map((item) => {
         const timelineStart = Number(cursor.toFixed(2));
         const timelineEnd = Number((cursor + item.sourceDuration).toFixed(2));
@@ -1244,27 +1251,34 @@ export function App() {
         };
       });
 
-      if (mode === 'insert') {
-        const insertStart = Math.max(0, Number(currentTime.toFixed(2)));
-        const totalDur = Number((cursor - insertStart).toFixed(2));
-        const shifted = sorted.map((c) => {
-          if (c.timelineStart >= insertStart - 0.05) {
-            return {
-              ...c,
-              timelineStart: Number((c.timelineStart + totalDur).toFixed(2)),
-              timelineEnd: Number((c.timelineEnd + totalDur).toFixed(2)),
-            };
-          }
-          return c;
-        });
-        return sortClips([...shifted, ...newClips]);
-      }
+      const newEnd = Number(cursor.toFixed(2));
+      const firstAfter = baseClips.find((c) => c.timelineStart >= insertStart - 0.05);
+      const overlapShift =
+        firstAfter && newEnd > firstAfter.timelineStart
+          ? Number((newEnd - firstAfter.timelineStart).toFixed(2))
+          : 0;
 
-      return [...sorted, ...newClips];
+      const shifted =
+        overlapShift > 0
+          ? baseClips.map((c) => {
+              if (c.timelineStart >= insertStart - 0.05) {
+                return {
+                  ...c,
+                  timelineStart: Number((c.timelineStart + overlapShift).toFixed(2)),
+                  timelineEnd: Number((c.timelineEnd + overlapShift).toFixed(2)),
+                };
+              }
+              return c;
+            })
+          : baseClips;
+
+      return sortClips([...shifted, ...newClips]);
     });
     const lastId = probed[probed.length - 1].id;
     setSelectedClipId(lastId);
     setSelectedClipIds([lastId]);
+    setCurrentTime(addedEndTime);
+    playOffsetRef.current = addedEndTime;
   };
 
   const handleOpenBackground = async (mode: 'append' | 'insert' = 'append') => {
