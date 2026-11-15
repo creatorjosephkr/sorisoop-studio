@@ -241,6 +241,7 @@ export function App() {
     prismRingOpacity: initialSettings.visualEffects?.prismRingOpacity ?? 0.55,
     prismParticlesEnabled: initialSettings.visualEffects?.prismParticlesEnabled ?? false,
     prismParticlesOpacity: initialSettings.visualEffects?.prismParticlesOpacity ?? 0.6,
+    hologramSmoothing: initialSettings.visualEffects?.hologramSmoothing ?? 0.72,
     spectrumEnabled: initialSettings.visualEffects?.spectrumEnabled ?? true,
     spectrumMode:
       initialSettings.visualEffects?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
@@ -2168,6 +2169,31 @@ export function App() {
                       </div>
                     )}
                   </div>
+
+                  {(visualEffects.hologramEnabled ||
+                    visualEffects.prismRingEnabled ||
+                    visualEffects.prismParticlesEnabled) && (
+                    <div className="border-t border-slate-800 pt-2.5">
+                      <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                        <span>홀로그램 부드러운 움직임</span>
+                        <span>{Math.round((visualEffects.hologramSmoothing ?? 0.72) * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={0.94}
+                        step={0.02}
+                        value={visualEffects.hologramSmoothing ?? 0.72}
+                        onChange={(e) =>
+                          setVisualEffects((v) => ({
+                            ...v,
+                            hologramSmoothing: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-cyan-400"
+                      />
+                    </div>
+                  )}
 
                   <div className="border-t border-slate-800 pt-2.5 space-y-2.5">
                     <label className="flex items-center justify-between">

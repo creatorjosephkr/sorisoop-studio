@@ -101,6 +101,7 @@ export interface VisualEffectsConfig {
   prismRingOpacity?: number; // 0.05 ~ 1.0
   prismParticlesEnabled?: boolean;
   prismParticlesOpacity?: number; // 0.05 ~ 1.0
+  hologramSmoothing?: number; // 0 ~ 0.94 (음악 반응형 홀로그램 부드러운 움직임)
   spectrumEnabled: boolean;
   spectrumMode: SpectrumMode;
   spectrumOpacity: number; // 0.05 ~ 1.0

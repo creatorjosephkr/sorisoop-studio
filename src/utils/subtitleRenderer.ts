@@ -10,7 +10,7 @@ import {
 
 const spectrumSmoothMap = new WeakMap<
   CanvasRenderingContext2D,
-  { bins: Float32Array; samples: Float32Array; ledLevels: Float32Array }
+  { bins: Float32Array; samples: Float32Array; ledLevels: Float32Array; hologramBins: Float32Array }
 >();
 
 export interface RenderFrameParams {
@@ -544,19 +544,39 @@ export function renderMusicVideoFrame({
 
   const baseScale = Math.min(width, height) / 1080;
 
+  // 음악 반응형 비주얼 효과(홀로그램 3종)용 스무딩 오디오 빈 계산
+  const rawHologramBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
+  const holoSmooth = Math.max(0, Math.min(0.94, visualEffects?.hologramSmoothing ?? 0.72));
+  let holoEntry = spectrumSmoothMap.get(ctx);
+  if (!holoEntry || holoEntry.hologramBins.length !== rawHologramBins.length) {
+    holoEntry = {
+      bins: holoEntry?.bins.length === rawHologramBins.length ? holoEntry.bins : new Float32Array(rawHologramBins.length),
+      samples: holoEntry?.samples ?? new Float32Array(160),
+      ledLevels: holoEntry?.ledLevels ?? new Float32Array(24),
+      hologramBins: new Float32Array(rawHologramBins.length),
+    };
+    spectrumSmoothMap.set(ctx, holoEntry);
+  }
+  const holoKeep = holoSmooth;
+  const holoTake = 1 - holoKeep;
+  for (let i = 0; i < rawHologramBins.length; i++) {
+    holoEntry.hologramBins[i] = holoEntry.hologramBins[i] * holoKeep + rawHologramBins[i] * holoTake;
+  }
+  const hologramBins = holoEntry.hologramBins;
+
   // 평균 오디오 에너지(0~1) 계산
   let avgEnergy = 0;
   let bassEnergy = 0;
-  if (spectrumBins && spectrumBins.length > 0) {
+  if (hologramBins.length > 0) {
     let sum = 0;
     let bassSum = 0;
-    const bassCount = Math.max(1, Math.floor(spectrumBins.length * 0.25));
-    for (let i = 0; i < spectrumBins.length; i++) {
-      const v = spectrumBins[i] / 255;
+    const bassCount = Math.max(1, Math.floor(hologramBins.length * 0.25));
+    for (let i = 0; i < hologramBins.length; i++) {
+      const v = hologramBins[i] / 255;
       sum += v;
       if (i < bassCount) bassSum += v;
     }
-    avgEnergy = sum / spectrumBins.length;
+    avgEnergy = sum / hologramBins.length;
     bassEnergy = bassSum / bassCount;
   }
 
@@ -597,9 +617,9 @@ export function renderMusicVideoFrame({
         const u = i / steps;
         const x = -width * 0.06 + u * width * 1.12;
 
-        const binIdx = (band.binOffset + i) % (spectrumBins?.length || 48);
+        const binIdx = (band.binOffset + i) % hologramBins.length;
         const binVal =
-          spectrumBins && spectrumBins.length > 0 ? spectrumBins[binIdx] / 255 : 0.12;
+          spectrumBins && spectrumBins.length > 0 ? hologramBins[binIdx] / 255 : 0.12;
 
         // 3개의 위상이 다른 파동으로 구름이 뭉게뭉게 형태를 바꾸는 느낌 생성
         const centerWave =
@@ -664,7 +684,7 @@ export function renderMusicVideoFrame({
       const fy = s2 - Math.floor(s2);
       const bin =
         spectrumBins && spectrumBins.length > 0
-          ? spectrumBins[m % spectrumBins.length] / 255
+          ? hologramBins[m % hologramBins.length] / 255
           : 0.1;
 
       const mx = ((fx + Math.sin(t * 0.18 + m) * 0.08 + 1) % 1) * width;
@@ -686,7 +706,7 @@ export function renderMusicVideoFrame({
 
   // 1-A2. 칼라 홀로그램 프리즘 링 (음악 반응형)
   if (!transparentBackground && visualEffects?.prismRingEnabled) {
-    const rawBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
+    const rawBins = hologramBins;
     let bass = 0;
     let mid = 0;
     let treble = 0;
@@ -751,7 +771,7 @@ export function renderMusicVideoFrame({
 
   // 1-A3. 칼라 홀로그램 스타더스트 입자 (음악 반응형)
   if (!transparentBackground && visualEffects?.prismParticlesEnabled) {
-    const rawBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
+    const rawBins = hologramBins;
     let energy = 0;
     for (let i = 0; i < rawBins.length; i++) energy += rawBins[i] / 255;
     energy /= rawBins.length;
@@ -838,6 +858,7 @@ export function renderMusicVideoFrame({
         bins: new Float32Array(rawBins.length),
         samples: new Float32Array(160),
         ledLevels: new Float32Array(24),
+        hologramBins: new Float32Array(rawBins.length),
       };
       spectrumSmoothMap.set(ctx, smoothEntry);
     }
@@ -1049,6 +1070,7 @@ export function renderMusicVideoFrame({
         bins: new Float32Array(bins.length),
         samples: new Float32Array(160),
         ledLevels: new Float32Array(24),
+        hologramBins: new Float32Array(bins.length),
       };
       spectrumSmoothMap.set(ctx, smoothEntry);
     }
