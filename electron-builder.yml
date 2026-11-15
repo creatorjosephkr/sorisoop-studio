@@ -23,7 +23,6 @@ mac:
   artifactName: SoriSoop_MV_Studio_v${version}-Mac-${arch}.${ext}
   extendInfo:
     CFBundleDisplayName: 소리숲 뮤직비디오 스튜디오
-    CFBundleName: 소리숲 뮤직비디오 스튜디오
     LSHasLocalizedDisplayName: true
   extraResources:
     - from: build/mac/ko.lproj
