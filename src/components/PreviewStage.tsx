@@ -1,5 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Camera,
+  FolderOpen,
+  Maximize2,
+  Minimize2,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  X,
+} from 'lucide-react';
 import {
   AspectRatio,
   BackgroundMedia,
@@ -78,6 +88,65 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
   const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const textDragRef = useRef<{ id: string } | null>(null);
   const [mediaVersion, setMediaVersion] = useState(0);
+  const [exportModal, setExportModal] = useState<{
+    pngDataUrl: string;
+    jpegDataUrl: string;
+  } | null>(null);
+  const [exportFolder, setExportFolder] = useState('');
+  const [exportFileName, setExportFileName] = useState('');
+  const [exportFormat, setExportFormat] = useState<'png' | 'jpg'>('png');
+  const [isExportingFrame, setIsExportingFrame] = useState(false);
+  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  const toggleFullscreenPreview = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (previewContainerRef.current?.requestFullscreen) {
+        await previewContainerRef.current.requestFullscreen();
+      } else {
+        setIsFullscreenPreview((v) => !v);
+      }
+    } catch {
+      setIsFullscreenPreview((v) => !v);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreenPreview(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === '~' || e.code === 'Backquote') {
+        e.preventDefault();
+        void toggleFullscreenPreview();
+      } else if (e.key === 'Escape') {
+        if (document.fullscreenElement) {
+          void document.exitFullscreen().catch(() => {});
+        } else {
+          setIsFullscreenPreview(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleFullscreenPreview]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -242,10 +311,22 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
   const totalDuration = Math.max(duration, ...videoClips.map((c) => c.timelineEnd), 0);
 
   return (
-    <div className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-inner">
+    <div
+      ref={previewContainerRef}
+      className={
+        isFullscreenPreview
+          ? 'fixed inset-0 z-50 flex flex-col overflow-hidden bg-black'
+          : 'relative flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-950/90 shadow-inner'
+      }
+    >
       <video ref={videoRef} className="hidden" playsInline muted loop />
 
-      <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-slate-950">
+      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-[#222226]">
+        {isFullscreenPreview && (
+          <div className="pointer-events-none absolute top-2 left-2.5 z-10 select-none rounded bg-black/45 px-2 py-0.5 text-[10px] text-slate-300/80">
+            전체화면 종료: ~ / ESC
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           onMouseDown={(e) => {
@@ -332,6 +413,47 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           >
             <SkipForward className="h-3.5 w-3.5" />
           </button>
+          <div className="mx-0.5 h-4 w-px bg-slate-700" />
+          <button
+            type="button"
+            onClick={async () => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              const pngDataUrl = canvas.toDataURL('image/png');
+              const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.94);
+              const baseName = `frame_${formatTimecode(currentTime).replace(/:/g, '-')}`;
+              if (!exportFolder && window.electronAPI?.getPicturesDir) {
+                try {
+                  const dir = await window.electronAPI.getPicturesDir();
+                  setExportFolder(dir);
+                } catch {
+                  // 기본 경로 조회 실패 시 빈 값 유지
+                }
+              }
+              setExportFileName(baseName);
+              setExportModal({ pngDataUrl, jpegDataUrl });
+            }}
+            className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700"
+            title="현재 화면 이미지로 저장"
+          >
+            <Camera className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleFullscreenPreview()}
+            className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition ${
+              isFullscreenPreview
+                ? 'border-cyan-400 bg-cyan-500 text-slate-950 hover:bg-cyan-400'
+                : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
+            }`}
+            title={isFullscreenPreview ? '전체 화면 종료 (~ / ESC)' : '전체 화면 최대화 (~)'}
+          >
+            {isFullscreenPreview ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
 
         <div className="text-right font-mono text-xs font-semibold tracking-wider text-cyan-300">
@@ -341,16 +463,154 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
       </div>
 
       {/* 하단 크기 조절 드래그 핸들 */}
-      <div
-        onMouseDown={(e) => {
-          e.preventDefault();
-          dragStateRef.current = { startY: e.clientY, startHeight: previewHeight };
-        }}
-        className="group flex h-3.5 w-full cursor-ns-resize items-center justify-center border-t border-slate-800/80 bg-slate-900/70 hover:bg-slate-800"
-        title="아래로 드래그하여 프리뷰 창 크기 조절"
-      >
-        <div className="h-1 w-12 rounded-full bg-slate-600 transition-colors group-hover:bg-cyan-400" />
-      </div>
+      {!isFullscreenPreview && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            dragStateRef.current = { startY: e.clientY, startHeight: previewHeight };
+          }}
+          className="group flex h-3.5 w-full cursor-ns-resize items-center justify-center border-t border-slate-800/80 bg-slate-900/70 hover:bg-slate-800"
+          title="아래로 드래그하여 프리뷰 창 크기 조절"
+        >
+          <div className="h-1 w-12 rounded-full bg-slate-600 transition-colors group-hover:bg-cyan-400" />
+        </div>
+      )}
+
+      {/* Export Frame 저장 모달 (태그 없이 폴더 / 파일 이름 / 형식 JPG·PNG 선택) */}
+      {exportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 text-xs text-slate-200 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="h-4 w-4 text-cyan-400" />
+                <h3 className="text-sm font-bold text-slate-100">현재 화면 이미지로 저장</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExportModal(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              {window.electronAPI?.pickFolder && (
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                    저장 폴더
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={exportFolder || '기본 사진 폴더'}
+                      className="flex-1 truncate rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const picked = await window.electronAPI?.pickFolder?.(exportFolder);
+                        if (picked) setExportFolder(picked);
+                      }}
+                      className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[11px] font-medium text-slate-200 hover:bg-slate-700"
+                    >
+                      <FolderOpen className="h-3.5 w-3.5 text-cyan-400" />
+                      폴더 선택
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                  파일 이름
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={exportFileName}
+                    onChange={(e) => setExportFileName(e.target.value)}
+                    placeholder="frame"
+                    className="flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-100 focus:border-cyan-500 focus:outline-none"
+                  />
+                  <span className="font-mono text-xs text-slate-400">.{exportFormat}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-400">
+                  이미지 형식
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['png', 'jpg'] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => setExportFormat(fmt)}
+                      className={`rounded-lg border py-1.5 text-xs font-semibold uppercase transition ${
+                        exportFormat === fmt
+                          ? 'border-cyan-400 bg-cyan-500 text-slate-950'
+                          : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-400">※ 유튜브 섬네일은 JPG 권장</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExportModal(null)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  disabled={isExportingFrame}
+                  onClick={async () => {
+                    const dataUrl =
+                      exportFormat === 'jpg' ? exportModal.jpegDataUrl : exportModal.pngDataUrl;
+                    const cleanBase =
+                      exportFileName.trim().replace(/\.(png|jpe?g)$/i, '') || 'frame';
+                    setIsExportingFrame(true);
+                    try {
+                      if (window.electronAPI?.saveImageToPath) {
+                        const savedPath = await window.electronAPI.saveImageToPath({
+                          folderPath: exportFolder,
+                          fileName: cleanBase,
+                          format: exportFormat,
+                          dataUrl,
+                        });
+                        if (savedPath) {
+                          window.electronAPI.showItemInFolder?.(savedPath);
+                        }
+                      } else {
+                        const a = document.createElement('a');
+                        a.href = dataUrl;
+                        a.download = `${cleanBase}.${exportFormat}`;
+                        a.click();
+                      }
+                      setExportModal(null);
+                    } finally {
+                      setIsExportingFrame(false);
+                    }
+                  }}
+                  className="rounded-lg bg-cyan-500 px-4 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+                >
+                  {isExportingFrame ? '저장 중...' : '저장'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

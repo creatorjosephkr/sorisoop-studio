@@ -51,6 +51,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ext: string
   ): Promise<string | null> =>
     ipcRenderer.invoke('dialog:save-text', { defaultName, content, extName, ext }),
+  saveImageFile: (
+    defaultName: string,
+    pngDataUrl: string,
+    jpegDataUrl: string
+  ): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:save-image', { defaultName, pngDataUrl, jpegDataUrl }),
+  getPicturesDir: (): Promise<string> => ipcRenderer.invoke('app:get-pictures-dir'),
+  pickFolder: (defaultPath?: string): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:pick-folder', defaultPath),
+  saveImageToPath: (options: {
+    folderPath: string;
+    fileName: string;
+    format: 'png' | 'jpg';
+    dataUrl: string;
+  }): Promise<string> => ipcRenderer.invoke('file:save-image-to-path', options),
 
   transcribeWhisper: (
     pcm16k: Float32Array,
@@ -86,6 +101,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('shell:open-external', url),
   checkAppUpdate: () => ipcRenderer.invoke('app:check-update'),
   setAppTheme: (theme: string): Promise<void> => ipcRenderer.invoke('app:set-theme', theme),
+  setUnsavedChanges: (dirty: boolean): void =>
+    ipcRenderer.send('app:set-unsaved-changes', dirty),
+  confirmWindowClose: (): Promise<void> => ipcRenderer.invoke('app:confirm-close'),
+  onRequestClose: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('app:request-close', listener);
+    return () => ipcRenderer.removeListener('app:request-close', listener);
+  },
   onOpenPrivacyPolicy: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('menu:open-privacy', listener);

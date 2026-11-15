@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Download,
@@ -25,6 +25,12 @@ import { UserGuideModal } from './components/UserGuideModal';
 import appIconUrl from '../app-icon.png';
 import { PreviewStage } from './components/PreviewStage';
 import { SegmentListEditor } from './components/SegmentListEditor';
+import {
+  SettingRow,
+  SettingSection,
+  SliderControl,
+  ToggleControl,
+} from './components/SettingLayout';
 import { StylePresetEditor } from './components/StylePresetEditor';
 import { TextLayerEditor } from './components/TextLayerEditor';
 import { WaveformTimeline } from './components/WaveformTimeline';
@@ -33,6 +39,7 @@ import {
   AspectRatio,
   BackgroundMedia,
   DEFAULT_LED_METER_SETTINGS,
+  DEFAULT_PRISM_RING_SETTINGS,
   DEFAULT_SPECTRUM_SETTINGS,
   LyricSegment,
   SpectrumBand,
@@ -72,7 +79,12 @@ import {
   buildSegmentsFromWhisper,
   extractPureLyricLines,
 } from './utils/lyricMatcher';
-import { loadPresets, savePresets } from './utils/presets';
+import {
+  DEFAULT_PRESETS,
+  loadPresets,
+  mergeWithDefaultPresets,
+  savePresets,
+} from './utils/presets';
 import {
   toJsonContent,
   toLrcContent,
@@ -234,50 +246,43 @@ export function App() {
   const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
   const pendingMediaModeRef = useRef<'append' | 'insert'>('append');
-  const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>({
-    hologramEnabled: initialSettings.visualEffects?.hologramEnabled ?? true,
-    hologramOpacity: initialSettings.visualEffects?.hologramOpacity ?? 0.38,
-    prismRingEnabled: initialSettings.visualEffects?.prismRingEnabled ?? false,
-    prismRingOpacity: initialSettings.visualEffects?.prismRingOpacity ?? 0.55,
-    prismParticlesEnabled: initialSettings.visualEffects?.prismParticlesEnabled ?? false,
-    prismParticlesOpacity: initialSettings.visualEffects?.prismParticlesOpacity ?? 0.6,
-    hologramSmoothing: initialSettings.visualEffects?.hologramSmoothing ?? 0.72,
-    spectrumEnabled: initialSettings.visualEffects?.spectrumEnabled ?? true,
-    spectrumMode:
-      initialSettings.visualEffects?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
-    spectrumOpacity:
-      initialSettings.visualEffects?.spectrumOpacity ?? DEFAULT_SPECTRUM_SETTINGS.spectrumOpacity,
-    spectrumBand:
-      initialSettings.visualEffects?.spectrumBand ?? DEFAULT_SPECTRUM_SETTINGS.spectrumBand,
-    spectrumHeight:
-      initialSettings.visualEffects?.spectrumHeight ?? DEFAULT_SPECTRUM_SETTINGS.spectrumHeight,
-    spectrumWidth:
-      initialSettings.visualEffects?.spectrumWidth ?? DEFAULT_SPECTRUM_SETTINGS.spectrumWidth,
-    spectrumColor:
-      initialSettings.visualEffects?.spectrumColor ?? DEFAULT_SPECTRUM_SETTINGS.spectrumColor,
-    spectrumThickness:
-      initialSettings.visualEffects?.spectrumThickness ??
-      DEFAULT_SPECTRUM_SETTINGS.spectrumThickness,
-    spectrumShape:
-      initialSettings.visualEffects?.spectrumShape ?? DEFAULT_SPECTRUM_SETTINGS.spectrumShape,
-    spectrumSmoothing:
-      initialSettings.visualEffects?.spectrumSmoothing ??
-      DEFAULT_SPECTRUM_SETTINGS.spectrumSmoothing,
-    lyricLedMeterEnabled: initialSettings.visualEffects?.lyricLedMeterEnabled ?? true,
-    ledMeterPosY:
-      initialSettings.visualEffects?.ledMeterPosY ?? DEFAULT_LED_METER_SETTINGS.ledMeterPosY,
-    ledMeterColumns:
-      initialSettings.visualEffects?.ledMeterColumns ?? DEFAULT_LED_METER_SETTINGS.ledMeterColumns,
-    ledMeterHeight:
-      initialSettings.visualEffects?.ledMeterHeight ?? DEFAULT_LED_METER_SETTINGS.ledMeterHeight,
-    ledMeterThickness:
-      initialSettings.visualEffects?.ledMeterThickness ??
-      DEFAULT_LED_METER_SETTINGS.ledMeterThickness,
-    ledMeterOpacity:
-      initialSettings.visualEffects?.ledMeterOpacity ?? DEFAULT_LED_METER_SETTINGS.ledMeterOpacity,
-    ledMeterSmoothing:
-      initialSettings.visualEffects?.ledMeterSmoothing ??
-      DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing,
+  const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>(() => {
+    const initVe = initialSettings.visualEffects;
+    return {
+      hologramEnabled: initVe?.hologramEnabled ?? false,
+      hologramOpacity: initVe?.hologramOpacity ?? 0.38,
+      prismRingEnabled: initVe?.prismRingEnabled ?? false,
+      prismRingOpacity: initVe?.prismRingOpacity ?? DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity,
+      prismRingScale: initVe?.prismRingScale ?? DEFAULT_PRISM_RING_SETTINGS.prismRingScale,
+      prismRingThickness:
+        initVe?.prismRingThickness !== undefined && initVe.prismRingThickness >= 1
+          ? Math.min(300, Math.round(initVe.prismRingThickness))
+          : DEFAULT_PRISM_RING_SETTINGS.prismRingThickness,
+      prismRingColor: initVe?.prismRingColor ?? DEFAULT_PRISM_RING_SETTINGS.prismRingColor,
+      prismParticlesEnabled: initVe?.prismParticlesEnabled ?? false,
+      prismParticlesOpacity: initVe?.prismParticlesOpacity ?? 0.6,
+      hologramSmoothing: initVe?.hologramSmoothing ?? 0.72,
+      spectrumEnabled: initVe?.spectrumEnabled ?? true,
+      spectrumMode: initVe?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
+      spectrumOpacity: initVe?.spectrumOpacity ?? DEFAULT_SPECTRUM_SETTINGS.spectrumOpacity,
+      spectrumBand: initVe?.spectrumBand ?? DEFAULT_SPECTRUM_SETTINGS.spectrumBand,
+      spectrumHeight: initVe?.spectrumHeight ?? DEFAULT_SPECTRUM_SETTINGS.spectrumHeight,
+      spectrumWidth: initVe?.spectrumWidth ?? DEFAULT_SPECTRUM_SETTINGS.spectrumWidth,
+      spectrumColor: initVe?.spectrumColor ?? DEFAULT_SPECTRUM_SETTINGS.spectrumColor,
+      spectrumThickness: initVe?.spectrumThickness ?? DEFAULT_SPECTRUM_SETTINGS.spectrumThickness,
+      spectrumShape: initVe?.spectrumShape ?? DEFAULT_SPECTRUM_SETTINGS.spectrumShape,
+      spectrumSmoothing: initVe?.spectrumSmoothing ?? DEFAULT_SPECTRUM_SETTINGS.spectrumSmoothing,
+      spectrumPosY: initVe?.spectrumPosY ?? DEFAULT_SPECTRUM_SETTINGS.spectrumPosY,
+      lyricLedMeterEnabled: initVe?.lyricLedMeterEnabled ?? false,
+      ledMeterPosY: initVe?.ledMeterPosY ?? DEFAULT_LED_METER_SETTINGS.ledMeterPosY,
+      ledMeterColumns: initVe?.ledMeterColumns ?? DEFAULT_LED_METER_SETTINGS.ledMeterColumns,
+      ledMeterHeight: initVe?.ledMeterHeight ?? DEFAULT_LED_METER_SETTINGS.ledMeterHeight,
+      ledMeterThickness:
+        initVe?.ledMeterThickness ?? DEFAULT_LED_METER_SETTINGS.ledMeterThickness,
+      ledMeterOpacity: initVe?.ledMeterOpacity ?? DEFAULT_LED_METER_SETTINGS.ledMeterOpacity,
+      ledMeterSmoothing:
+        initVe?.ledMeterSmoothing ?? DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing,
+    };
   });
   const [spectrumBins, setSpectrumBins] = useState<Uint8Array | null>(null);
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
@@ -356,6 +361,62 @@ export function App() {
   const fileProjectInputRef = useRef<HTMLInputElement | null>(null);
   const whisperWorkerRef = useRef<Worker | null>(null);
   const whisperWorkerModelRef = useRef<string | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const markCleanOnNextSnapshotRef = useRef(true);
+  const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
+  const [isSavingBeforeClose, setIsSavingBeforeClose] = useState(false);
+
+  const projectContentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        trackName,
+        audioPath,
+        aspectRatio,
+        rawLyrics,
+        segments,
+        videoClips,
+        textLayers,
+        activePresetId,
+        presets,
+        visualEffects,
+        whisperModelId,
+      }),
+    [
+      trackName,
+      audioPath,
+      aspectRatio,
+      rawLyrics,
+      segments,
+      videoClips,
+      textLayers,
+      activePresetId,
+      presets,
+      visualEffects,
+      whisperModelId,
+    ]
+  );
+
+  useEffect(() => {
+    if (markCleanOnNextSnapshotRef.current) {
+      lastSavedSnapshotRef.current = projectContentSnapshot;
+      markCleanOnNextSnapshotRef.current = false;
+      window.electronAPI?.setUnsavedChanges?.(false);
+      return;
+    }
+    const dirty =
+      lastSavedSnapshotRef.current !== null &&
+      projectContentSnapshot !== lastSavedSnapshotRef.current;
+    window.electronAPI?.setUnsavedChanges?.(dirty);
+  }, [projectContentSnapshot]);
+
+  useEffect(() => {
+    const unsub = window.electronAPI?.onRequestClose?.(() => {
+      setShowCloseConfirmModal(true);
+    });
+    return () => {
+      unsub?.();
+    };
+  }, []);
 
   const activePreset =
     presets.find((p) => p.id === activePresetId) ?? presets[0];
@@ -1189,6 +1250,12 @@ export function App() {
     });
   };
 
+  const handleResetBuiltInPreset = (id: string) => {
+    const def = DEFAULT_PRESETS.find((p) => p.id === id);
+    if (!def) return;
+    setPresets((prev) => prev.map((p) => (p.id === id ? { ...def } : p)));
+  };
+
   // 가사 카드 위/아래 테두리 호버 추가 버튼: 기본 3초 길이 빈 가사 삽입 + 앞/뒤 구간 자동 조절
   const handleInsertEmptyLyricAt = (insertIndex: number) => {
     const TARGET_LEN = 3.0;
@@ -1373,7 +1440,7 @@ export function App() {
   };
 
   // 프로젝트(.ssproj) 저장 및 불러오기
-  const handleSaveProject = async (saveAs = false) => {
+  const handleSaveProject = async (saveAs = false): Promise<boolean> => {
     const projectPayload = {
       version: 1,
       savedAt: new Date().toISOString(),
@@ -1398,10 +1465,13 @@ export function App() {
       const savedPath = await window.electronAPI.saveTextFileToPath(currentProjectPath, json);
       if (savedPath) {
         const savedName = savedPath.split(/[\\/]/).pop() ?? fileName;
+        lastSavedSnapshotRef.current = projectContentSnapshot;
+        window.electronAPI?.setUnsavedChanges?.(false);
         setWhisperStatusText(`프로젝트 저장 완료: ${savedName}`);
         showSaveNotice(`저장되었습니다 (${savedName})`);
+        return true;
       }
-      return;
+      return false;
     }
 
     if (window.electronAPI?.saveTextFile) {
@@ -1414,10 +1484,13 @@ export function App() {
       if (savedPath) {
         setCurrentProjectPath(savedPath);
         const savedName = savedPath.split(/[\\/]/).pop() ?? fileName;
+        lastSavedSnapshotRef.current = projectContentSnapshot;
+        window.electronAPI?.setUnsavedChanges?.(false);
         setWhisperStatusText(`프로젝트 저장 완료: ${savedName}`);
         showSaveNotice(`저장되었습니다 (${savedName})`);
+        return true;
       }
-      return;
+      return false;
     }
 
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
@@ -1427,8 +1500,10 @@ export function App() {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
+    lastSavedSnapshotRef.current = projectContentSnapshot;
     setWhisperStatusText(`프로젝트 저장 완료: ${fileName}`);
     showSaveNotice(`저장되었습니다 (${fileName})`);
+    return true;
   };
 
   const loadProjectFromContent = async (
@@ -1446,7 +1521,8 @@ export function App() {
         setAspectRatio(parsed.aspectRatio);
       }
       if (Array.isArray(parsed.presets) && parsed.presets.length > 0) {
-        setPresets(parsed.presets);
+        const { merged } = mergeWithDefaultPresets(parsed.presets);
+        setPresets(merged);
       }
       if (typeof parsed.activePresetId === 'string') {
         setActivePresetId(parsed.activePresetId);
@@ -1487,6 +1563,7 @@ export function App() {
         setSelectedTextLayerId(null);
       }
       undoStackRef.current = [];
+      markCleanOnNextSnapshotRef.current = true;
       redoStackRef.current = [];
       syncHistoryFlags();
       setSegmentsState(parsed.segments);
@@ -1902,7 +1979,7 @@ export function App() {
         </section>
 
         {/* 우측: 가사 싱크 / 자막 스타일 프리셋 / 배경 설정 탭 */}
-        <aside className="flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-3 lg:col-span-5 xl:col-span-4">
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60 p-3 lg:col-span-5 xl:col-span-4">
           <div className="mb-3 grid grid-cols-4 gap-1 rounded-xl bg-slate-950 p-1 text-xs">
             <button
               type="button"
@@ -1946,14 +2023,14 @@ export function App() {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <ImageIcon className="h-3.5 w-3.5" /> 배경 설정
+              <ImageIcon className="h-3.5 w-3.5" /> 비주얼 효과 설정
             </button>
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {rightTab === 'lyrics' && (
               <div className="flex h-full flex-col gap-2">
-                <div className="flex items-center justify-between rounded-lg bg-slate-950/70 px-2.5 py-1.5 text-[11px]">
+                <div className="flex items-center justify-between pb-1 text-[11px]">
                   <span className="text-slate-400">로컬 음성분석 모델</span>
                   <select
                     value={whisperModelId}
@@ -1967,7 +2044,7 @@ export function App() {
                   </select>
                 </div>
 
-                <div className="flex-1 overflow-hidden">
+                <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                   <SegmentListEditor
                     segments={segments}
                     selectedSegmentId={selectedSegmentId}
@@ -2047,169 +2124,254 @@ export function App() {
                 onSaveOverwritePreset={() => savePresets(presets)}
                 onCreatePreset={handleCreatePreset}
                 onDeletePreset={handleDeletePreset}
+                onResetBuiltInPreset={handleResetBuiltInPreset}
               />
             )}
 
             {rightTab === 'background' && (
-              <div className="h-full space-y-3 overflow-y-auto pr-1 text-xs">
-                {/* 음악 반응형 홀로그램 & 오디오 스펙트럼 효과 설정 */}
-                <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-                  <p className="font-semibold text-cyan-300">음악 반응형 비주얼 효과</p>
-
-                  <label className="flex items-center justify-between">
-                    <span className="text-slate-200">홀로그램 구름 띠 표시</span>
-                    <input
-                      type="checkbox"
+              <div className="flex h-full min-h-0 min-w-0 flex-col gap-2.5 overflow-y-auto overflow-x-hidden pr-2.5 text-xs">
+                {/* 음악 반응형 홀로그램 */}
+                <SettingSection
+                  title="홀로그램"
+                  action={
+                    visualEffects.prismRingEnabled && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisualEffects((v) => ({
+                            ...v,
+                            ...DEFAULT_PRISM_RING_SETTINGS,
+                          }))
+                        }
+                        className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                        title="프리즘 링 설정을 기본값으로 되돌립니다"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        기본값
+                      </button>
+                    )
+                  }
+                >
+                  <SettingRow label="구름 띠 표시">
+                    <ToggleControl
                       checked={visualEffects.hologramEnabled}
-                      onChange={(e) =>
-                        setVisualEffects((v) => ({ ...v, hologramEnabled: e.target.checked }))
+                      onChange={(hologramEnabled) =>
+                        setVisualEffects((v) => ({ ...v, hologramEnabled }))
                       }
-                      className="accent-cyan-400"
                     />
-                  </label>
+                  </SettingRow>
 
                   {visualEffects.hologramEnabled && (
-                    <div>
-                      <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                        <span>홀로그램 투명도</span>
-                        <span>{Math.round(visualEffects.hologramOpacity * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
+                    <SettingRow label="구름 띠 투명도">
+                      <SliderControl
                         min={0.05}
                         max={1}
                         step={0.05}
                         value={visualEffects.hologramOpacity}
-                        onChange={(e) =>
-                          setVisualEffects((v) => ({
-                            ...v,
-                            hologramOpacity: Number(e.target.value),
-                          }))
+                        valueLabel={`${Math.round(visualEffects.hologramOpacity * 100)}%`}
+                        onChange={(hologramOpacity) =>
+                          setVisualEffects((v) => ({ ...v, hologramOpacity }))
                         }
-                        className="w-full accent-cyan-400"
                       />
-                    </div>
+                    </SettingRow>
                   )}
 
-                  <div className="border-t border-slate-800 pt-2.5 space-y-2">
-                    <label className="flex items-center justify-between">
-                      <span className="text-slate-200">칼라 홀로그램 프리즘 링</span>
-                      <input
-                        type="checkbox"
-                        checked={visualEffects.prismRingEnabled ?? false}
-                        onChange={(e) =>
-                          setVisualEffects((v) => ({ ...v, prismRingEnabled: e.target.checked }))
-                        }
-                        className="accent-cyan-400"
-                      />
-                    </label>
+                  <SettingRow label="프리즘 링">
+                    <ToggleControl
+                      checked={visualEffects.prismRingEnabled ?? false}
+                      onChange={(prismRingEnabled) =>
+                        setVisualEffects((v) => ({ ...v, prismRingEnabled }))
+                      }
+                    />
+                  </SettingRow>
 
-                    {visualEffects.prismRingEnabled && (
-                      <div>
-                        <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                          <span>프리즘 링 투명도</span>
-                          <span>{Math.round((visualEffects.prismRingOpacity ?? 0.55) * 100)}%</span>
-                        </div>
-                        <input
-                          type="range"
+                  {visualEffects.prismRingEnabled && (
+                    <>
+                      <SettingRow label="링 크기">
+                        <SliderControl
+                          min={0.5}
+                          max={1.8}
+                          step={0.05}
+                          value={
+                            visualEffects.prismRingScale ??
+                            DEFAULT_PRISM_RING_SETTINGS.prismRingScale
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.prismRingScale ??
+                              DEFAULT_PRISM_RING_SETTINGS.prismRingScale) * 100
+                          )}%`}
+                          onChange={(prismRingScale) =>
+                            setVisualEffects((v) => ({ ...v, prismRingScale }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="최대 선 두께">
+                        <SliderControl
+                          min={1}
+                          max={300}
+                          step={1}
+                          value={Math.max(
+                            1,
+                            Math.min(
+                              300,
+                              Math.round(
+                                visualEffects.prismRingThickness ??
+                                  DEFAULT_PRISM_RING_SETTINGS.prismRingThickness
+                              )
+                            )
+                          )}
+                          valueLabel={`${Math.max(
+                            1,
+                            Math.min(
+                              300,
+                              Math.round(
+                                visualEffects.prismRingThickness ??
+                                  DEFAULT_PRISM_RING_SETTINGS.prismRingThickness
+                              )
+                            )
+                          )}px`}
+                          onChange={(prismRingThickness) =>
+                            setVisualEffects((v) => ({ ...v, prismRingThickness }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="링 투명도">
+                        <SliderControl
                           min={0.05}
                           max={1}
                           step={0.05}
-                          value={visualEffects.prismRingOpacity ?? 0.55}
-                          onChange={(e) =>
-                            setVisualEffects((v) => ({
-                              ...v,
-                              prismRingOpacity: Number(e.target.value),
-                            }))
+                          value={
+                            visualEffects.prismRingOpacity ??
+                            DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity
                           }
-                          className="w-full accent-cyan-400"
+                          valueLabel={`${Math.round(
+                            (visualEffects.prismRingOpacity ??
+                              DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity) * 100
+                          )}%`}
+                          onChange={(prismRingOpacity) =>
+                            setVisualEffects((v) => ({ ...v, prismRingOpacity }))
+                          }
                         />
-                      </div>
-                    )}
-                  </div>
+                      </SettingRow>
 
-                  <div className="border-t border-slate-800 pt-2.5 space-y-2">
-                    <label className="flex items-center justify-between">
-                      <span className="text-slate-200">칼라 홀로그램 스타더스트 입자</span>
-                      <input
-                        type="checkbox"
-                        checked={visualEffects.prismParticlesEnabled ?? false}
-                        onChange={(e) =>
-                          setVisualEffects((v) => ({
-                            ...v,
-                            prismParticlesEnabled: e.target.checked,
-                          }))
-                        }
-                        className="accent-cyan-400"
-                      />
-                    </label>
-
-                    {visualEffects.prismParticlesEnabled && (
-                      <div>
-                        <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                          <span>스타더스트 투명도</span>
-                          <span>
-                            {Math.round((visualEffects.prismParticlesOpacity ?? 0.6) * 100)}%
-                          </span>
+                      <SettingRow label="링 색상">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisualEffects((v) => ({ ...v, prismRingColor: 'auto' }))
+                            }
+                            className={`rounded px-2 py-1 text-[10px] font-medium ${
+                              (visualEffects.prismRingColor ?? 'auto') === 'auto'
+                                ? 'bg-cyan-500 text-slate-950'
+                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                            }`}
+                          >
+                            자동 홀로그램
+                          </button>
+                          <input
+                            type="color"
+                            value={
+                              (visualEffects.prismRingColor ?? 'auto') === 'auto'
+                                ? '#38bdf8'
+                                : visualEffects.prismRingColor
+                            }
+                            onChange={(e) =>
+                              setVisualEffects((v) => ({
+                                ...v,
+                                prismRingColor: e.target.value,
+                              }))
+                            }
+                            title="프리즘 링 단색 지정"
+                            className="h-6 w-8 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
+                          />
                         </div>
-                        <input
-                          type="range"
-                          min={0.05}
-                          max={1}
-                          step={0.05}
-                          value={visualEffects.prismParticlesOpacity ?? 0.6}
-                          onChange={(e) =>
-                            setVisualEffects((v) => ({
-                              ...v,
-                              prismParticlesOpacity: Number(e.target.value),
-                            }))
-                          }
-                          className="w-full accent-cyan-400"
-                        />
-                      </div>
-                    )}
-                  </div>
+                      </SettingRow>
+                    </>
+                  )}
+
+                  <SettingRow label="스타더스트 입자">
+                    <ToggleControl
+                      checked={visualEffects.prismParticlesEnabled ?? false}
+                      onChange={(prismParticlesEnabled) =>
+                        setVisualEffects((v) => ({ ...v, prismParticlesEnabled }))
+                      }
+                    />
+                  </SettingRow>
+
+                  {visualEffects.prismParticlesEnabled && (
+                    <SettingRow label="입자 투명도">
+                      <SliderControl
+                        min={0.05}
+                        max={1}
+                        step={0.05}
+                        value={visualEffects.prismParticlesOpacity ?? 0.6}
+                        valueLabel={`${Math.round(
+                          (visualEffects.prismParticlesOpacity ?? 0.6) * 100
+                        )}%`}
+                        onChange={(prismParticlesOpacity) =>
+                          setVisualEffects((v) => ({ ...v, prismParticlesOpacity }))
+                        }
+                      />
+                    </SettingRow>
+                  )}
 
                   {(visualEffects.hologramEnabled ||
                     visualEffects.prismRingEnabled ||
                     visualEffects.prismParticlesEnabled) && (
-                    <div className="border-t border-slate-800 pt-2.5">
-                      <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                        <span>홀로그램 부드러운 움직임</span>
-                        <span>{Math.round((visualEffects.hologramSmoothing ?? 0.72) * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
+                    <SettingRow label="부드러운 움직임">
+                      <SliderControl
                         min={0}
                         max={0.94}
                         step={0.02}
                         value={visualEffects.hologramSmoothing ?? 0.72}
-                        onChange={(e) =>
+                        valueLabel={`${Math.round(
+                          (visualEffects.hologramSmoothing ?? 0.72) * 100
+                        )}%`}
+                        onChange={(hologramSmoothing) =>
+                          setVisualEffects((v) => ({ ...v, hologramSmoothing }))
+                        }
+                      />
+                    </SettingRow>
+                  )}
+                </SettingSection>
+
+                {/* 스펙트럼 */}
+                <SettingSection
+                  title="스펙트럼"
+                  action={
+                    visualEffects.spectrumEnabled && (
+                      <button
+                        type="button"
+                        onClick={() =>
                           setVisualEffects((v) => ({
                             ...v,
-                            hologramSmoothing: Number(e.target.value),
+                            ...DEFAULT_SPECTRUM_SETTINGS,
                           }))
                         }
-                        className="w-full accent-cyan-400"
-                      />
-                    </div>
-                  )}
+                        className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                        title="오디오 스펙트럼 설정을 기본값으로 되돌립니다"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        기본값
+                      </button>
+                    )
+                  }
+                >
+                  <SettingRow label="오디오 스펙트럼">
+                    <ToggleControl
+                      checked={visualEffects.spectrumEnabled}
+                      onChange={(spectrumEnabled) =>
+                        setVisualEffects((v) => ({ ...v, spectrumEnabled }))
+                      }
+                    />
+                  </SettingRow>
 
-                  <div className="border-t border-slate-800 pt-2.5 space-y-2.5">
-                    <label className="flex items-center justify-between">
-                      <span className="text-slate-200">중앙 오디오 스펙트럼 표시</span>
-                      <input
-                        type="checkbox"
-                        checked={visualEffects.spectrumEnabled}
-                        onChange={(e) =>
-                          setVisualEffects((v) => ({ ...v, spectrumEnabled: e.target.checked }))
-                        }
-                        className="accent-cyan-400"
-                      />
-                    </label>
-
-                    {visualEffects.spectrumEnabled && (
-                      <>
+                  {visualEffects.spectrumEnabled && (
+                    <>
+                      <SettingRow label="모드">
                         <div className="grid grid-cols-2 gap-1.5">
                           {(['digital', 'analog'] as SpectrumMode[]).map((mode) => (
                             <button
@@ -2218,551 +2380,408 @@ export function App() {
                               onClick={() =>
                                 setVisualEffects((v) => ({ ...v, spectrumMode: mode }))
                               }
-                              className={`rounded-lg py-1.5 text-[11px] font-medium ${
+                              className={`rounded-lg py-1.5 text-[11px] font-medium transition ${
                                 visualEffects.spectrumMode === mode
                                   ? 'bg-cyan-500 text-slate-950'
                                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                               }`}
                             >
-                              {mode === 'digital' ? '디지털 (LED 바)' : '아날로그 (웨이브)'}
+                              {mode === 'digital' ? '디지털 (LED)' : '아날로그 (웨이브)'}
                             </button>
                           ))}
                         </div>
+                      </SettingRow>
 
-                        {/* 음역대 */}
-                        <div>
-                          <div className="mb-1 text-[11px] text-slate-400">음역대</div>
-                          <div className="grid grid-cols-4 gap-1">
-                            {(
-                              [
-                                { id: 'all', label: '전체' },
-                                { id: 'bass', label: '저음' },
-                                { id: 'mid', label: '중음' },
-                                { id: 'treble', label: '고음' },
-                              ] as Array<{ id: SpectrumBand; label: string }>
-                            ).map((b) => (
-                              <button
-                                key={b.id}
-                                type="button"
-                                onClick={() =>
-                                  setVisualEffects((v) => ({ ...v, spectrumBand: b.id }))
-                                }
-                                className={`rounded-md py-1 text-[11px] font-medium ${
-                                  (visualEffects.spectrumBand ?? 'all') === b.id
-                                    ? 'bg-cyan-500 text-slate-950'
-                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                }`}
-                              >
-                                {b.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 모양 */}
-                        <div>
-                          <div className="mb-1 text-[11px] text-slate-400">모양</div>
-                          <div className="grid grid-cols-4 gap-1">
-                            {(
-                              [
-                                { id: 'mirror', label: '대칭' },
-                                { id: 'bottom', label: '하단' },
-                                { id: 'dots', label: '도트' },
-                                { id: 'line', label: '라인' },
-                              ] as Array<{ id: SpectrumShape; label: string }>
-                            ).map((s) => (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() =>
-                                  setVisualEffects((v) => ({ ...v, spectrumShape: s.id }))
-                                }
-                                className={`rounded-md py-1 text-[11px] font-medium ${
-                                  (visualEffects.spectrumShape ?? 'mirror') === s.id
-                                    ? 'bg-cyan-500 text-slate-950'
-                                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                }`}
-                              >
-                                {s.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* 움직임 둔화(부드러움) */}
-                        <div>
-                          <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                            <span>움직임 부드러움 (둔화)</span>
-                            <span>
-                              {Math.round((visualEffects.spectrumSmoothing ?? 0.72) * 100)}%
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={0.92}
-                            step={0.04}
-                            value={visualEffects.spectrumSmoothing ?? 0.72}
-                            onChange={(e) =>
-                              setVisualEffects((v) => ({
-                                ...v,
-                                spectrumSmoothing: Number(e.target.value),
-                              }))
-                            }
-                            className="w-full accent-cyan-400"
-                          />
-                        </div>
-
-                        {/* 높이 & 너비 */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>높이</span>
-                              <span>
-                                {Math.round((visualEffects.spectrumHeight ?? 0.18) * 100)}%
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.06}
-                              max={0.45}
-                              step={0.01}
-                              value={visualEffects.spectrumHeight ?? 0.18}
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  spectrumHeight: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>너비</span>
-                              <span>
-                                {Math.round((visualEffects.spectrumWidth ?? 0.72) * 100)}%
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.25}
-                              max={1}
-                              step={0.01}
-                              value={visualEffects.spectrumWidth ?? 0.72}
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  spectrumWidth: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                        </div>
-
-                        {/* 굵기 & 투명도 */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>굵기</span>
-                              <span>
-                                {Math.round((visualEffects.spectrumThickness ?? 1) * 100)}%
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.4}
-                              max={2.4}
-                              step={0.1}
-                              value={visualEffects.spectrumThickness ?? 1}
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  spectrumThickness: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>투명도</span>
-                              <span>{Math.round(visualEffects.spectrumOpacity * 100)}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.05}
-                              max={1}
-                              step={0.05}
-                              value={visualEffects.spectrumOpacity}
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  spectrumOpacity: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                        </div>
-
-                        {/* 색상 & 기본값 되돌리기 */}
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-slate-400">색상</span>
+                      <SettingRow label="음역대">
+                        <div className="grid grid-cols-4 gap-1">
+                          {(
+                            [
+                              { id: 'all', label: '전체' },
+                              { id: 'bass', label: '저음' },
+                              { id: 'mid', label: '중음' },
+                              { id: 'treble', label: '고음' },
+                            ] as Array<{ id: SpectrumBand; label: string }>
+                          ).map((b) => (
                             <button
+                              key={b.id}
                               type="button"
                               onClick={() =>
-                                setVisualEffects((v) => ({ ...v, spectrumColor: 'auto' }))
+                                setVisualEffects((v) => ({ ...v, spectrumBand: b.id }))
                               }
-                              className={`rounded px-2 py-1 text-[10px] font-medium ${
-                                (visualEffects.spectrumColor ?? 'auto') === 'auto'
+                              className={`rounded-md py-1 text-[11px] font-medium transition ${
+                                (visualEffects.spectrumBand ?? 'all') === b.id
                                   ? 'bg-cyan-500 text-slate-950'
                                   : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                               }`}
                             >
-                              자동 그라데이션
+                              {b.label}
                             </button>
-                            <input
-                              type="color"
-                              value={
-                                (visualEffects.spectrumColor ?? 'auto') === 'auto'
-                                  ? '#38bdf8'
-                                  : visualEffects.spectrumColor
+                          ))}
+                        </div>
+                      </SettingRow>
+
+                      <SettingRow label="모양">
+                        <div className="grid grid-cols-4 gap-1">
+                          {(
+                            [
+                              { id: 'mirror', label: '대칭' },
+                              { id: 'bottom', label: '하단' },
+                              { id: 'dots', label: '도트' },
+                              { id: 'line', label: '라인' },
+                            ] as Array<{ id: SpectrumShape; label: string }>
+                          ).map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() =>
+                                setVisualEffects((v) => ({ ...v, spectrumShape: s.id }))
                               }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  spectrumColor: e.target.value,
-                                }))
-                              }
-                              title="스펙트럼 단색 지정"
-                              className="h-6 w-8 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
-                            />
-                          </div>
+                              className={`rounded-md py-1 text-[11px] font-medium transition ${
+                                (visualEffects.spectrumShape ?? 'mirror') === s.id
+                                  ? 'bg-cyan-500 text-slate-950'
+                                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              }`}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </SettingRow>
+
+                      <SettingRow label="부드러움">
+                        <SliderControl
+                          min={0}
+                          max={0.92}
+                          step={0.04}
+                          value={visualEffects.spectrumSmoothing ?? 0.72}
+                          valueLabel={`${Math.round(
+                            (visualEffects.spectrumSmoothing ?? 0.72) * 100
+                          )}%`}
+                          onChange={(spectrumSmoothing) =>
+                            setVisualEffects((v) => ({ ...v, spectrumSmoothing }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="세로 위치">
+                        <SliderControl
+                          min={0.08}
+                          max={0.92}
+                          step={0.01}
+                          value={
+                            visualEffects.spectrumPosY ?? DEFAULT_SPECTRUM_SETTINGS.spectrumPosY
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.spectrumPosY ??
+                              DEFAULT_SPECTRUM_SETTINGS.spectrumPosY) * 100
+                          )}%`}
+                          onChange={(spectrumPosY) =>
+                            setVisualEffects((v) => ({ ...v, spectrumPosY }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="높이">
+                        <SliderControl
+                          min={0.06}
+                          max={0.45}
+                          step={0.01}
+                          value={visualEffects.spectrumHeight ?? 0.18}
+                          valueLabel={`${Math.round((visualEffects.spectrumHeight ?? 0.18) * 100)}%`}
+                          onChange={(spectrumHeight) =>
+                            setVisualEffects((v) => ({ ...v, spectrumHeight }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="너비">
+                        <SliderControl
+                          min={0.25}
+                          max={1}
+                          step={0.01}
+                          value={visualEffects.spectrumWidth ?? 0.72}
+                          valueLabel={`${Math.round((visualEffects.spectrumWidth ?? 0.72) * 100)}%`}
+                          onChange={(spectrumWidth) =>
+                            setVisualEffects((v) => ({ ...v, spectrumWidth }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="굵기">
+                        <SliderControl
+                          min={0.4}
+                          max={2.4}
+                          step={0.1}
+                          value={visualEffects.spectrumThickness ?? 1}
+                          valueLabel={`${Math.round((visualEffects.spectrumThickness ?? 1) * 100)}%`}
+                          onChange={(spectrumThickness) =>
+                            setVisualEffects((v) => ({ ...v, spectrumThickness }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="투명도">
+                        <SliderControl
+                          min={0.05}
+                          max={1}
+                          step={0.05}
+                          value={visualEffects.spectrumOpacity}
+                          valueLabel={`${Math.round(visualEffects.spectrumOpacity * 100)}%`}
+                          onChange={(spectrumOpacity) =>
+                            setVisualEffects((v) => ({ ...v, spectrumOpacity }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="색상">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() =>
+                              setVisualEffects((v) => ({ ...v, spectrumColor: 'auto' }))
+                            }
+                            className={`rounded px-2 py-1 text-[10px] font-medium ${
+                              (visualEffects.spectrumColor ?? 'auto') === 'auto'
+                                ? 'bg-cyan-500 text-slate-950'
+                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                            }`}
+                          >
+                            자동 그라데이션
+                          </button>
+                          <input
+                            type="color"
+                            value={
+                              (visualEffects.spectrumColor ?? 'auto') === 'auto'
+                                ? '#38bdf8'
+                                : visualEffects.spectrumColor
+                            }
+                            onChange={(e) =>
                               setVisualEffects((v) => ({
                                 ...v,
-                                ...DEFAULT_SPECTRUM_SETTINGS,
+                                spectrumColor: e.target.value,
                               }))
                             }
-                            className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] text-slate-300 hover:bg-slate-700"
-                            title="오디오 스펙트럼 설정을 기본값으로 되돌립니다"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                            기본값 되돌리기
-                          </button>
+                            title="스펙트럼 단색 지정"
+                            className="h-6 w-8 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
+                          />
                         </div>
-                      </>
-                    )}
-                  </div>
+                      </SettingRow>
+                    </>
+                  )}
+                </SettingSection>
 
-                  <div className="border-t border-slate-800 pt-2.5 space-y-2.5">
-                    <label className="flex items-center justify-between">
-                      <span className="text-slate-200">LED 오디오 레벨메터</span>
-                      <input
-                        type="checkbox"
-                        checked={visualEffects.lyricLedMeterEnabled ?? true}
-                        onChange={(e) =>
+                {/* 레벨메터 */}
+                <SettingSection
+                  title="레벨메터"
+                  action={
+                    (visualEffects.lyricLedMeterEnabled ?? false) && (
+                      <button
+                        type="button"
+                        onClick={() =>
                           setVisualEffects((v) => ({
                             ...v,
-                            lyricLedMeterEnabled: e.target.checked,
+                            ...DEFAULT_LED_METER_SETTINGS,
                           }))
                         }
-                        className="accent-cyan-400"
-                      />
-                    </label>
-
-                    {(visualEffects.lyricLedMeterEnabled ?? true) && (
-                      <>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>세로 위치</span>
-                              <span>
-                                {Math.round(
-                                  (visualEffects.ledMeterPosY ??
-                                    DEFAULT_LED_METER_SETTINGS.ledMeterPosY) * 100
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.08}
-                              max={0.92}
-                              step={0.01}
-                              value={
-                                visualEffects.ledMeterPosY ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterPosY
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterPosY: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>기둥 개수</span>
-                              <span>
-                                {visualEffects.ledMeterColumns ??
-                                  DEFAULT_LED_METER_SETTINGS.ledMeterColumns}
-                                개
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={4}
-                              max={16}
-                              step={1}
-                              value={
-                                visualEffects.ledMeterColumns ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterColumns
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterColumns: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>기둥 높이</span>
-                              <span>
-                                {Math.round(
-                                  (visualEffects.ledMeterHeight ??
-                                    DEFAULT_LED_METER_SETTINGS.ledMeterHeight) * 100
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.5}
-                              max={2.4}
-                              step={0.05}
-                              value={
-                                visualEffects.ledMeterHeight ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterHeight
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterHeight: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>기둥 두께</span>
-                              <span>
-                                {Math.round(
-                                  (visualEffects.ledMeterThickness ??
-                                    DEFAULT_LED_METER_SETTINGS.ledMeterThickness) * 100
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.5}
-                              max={2.2}
-                              step={0.05}
-                              value={
-                                visualEffects.ledMeterThickness ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterThickness
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterThickness: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>부드러운 움직임</span>
-                              <span>
-                                {Math.round(
-                                  (visualEffects.ledMeterSmoothing ??
-                                    DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing) * 100
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0}
-                              max={0.92}
-                              step={0.02}
-                              value={
-                                visualEffects.ledMeterSmoothing ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterSmoothing: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                          <div>
-                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                              <span>투명도</span>
-                              <span>
-                                {Math.round(
-                                  (visualEffects.ledMeterOpacity ??
-                                    DEFAULT_LED_METER_SETTINGS.ledMeterOpacity) * 100
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={0.05}
-                              max={1}
-                              step={0.05}
-                              value={
-                                visualEffects.ledMeterOpacity ??
-                                DEFAULT_LED_METER_SETTINGS.ledMeterOpacity
-                              }
-                              onChange={(e) =>
-                                setVisualEffects((v) => ({
-                                  ...v,
-                                  ledMeterOpacity: Number(e.target.value),
-                                }))
-                              }
-                              className="w-full accent-cyan-400"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setVisualEffects((v) => ({
-                                ...v,
-                                ...DEFAULT_LED_METER_SETTINGS,
-                              }))
-                            }
-                            className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] text-slate-300 hover:bg-slate-700"
-                            title="LED 레벨메터 설정을 기본값으로 되돌립니다"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                            기본값 되돌리기
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleOpenBackground('append')}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-950/60 py-4 text-slate-300 hover:border-cyan-500 hover:text-cyan-300"
+                        className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
+                        title="LED 레벨메터 설정을 기본값으로 되돌립니다"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        기본값
+                      </button>
+                    )
+                  }
                 >
-                  <ImageIcon className="h-4 w-4" />
-                  {background ? '배경 이미지/영상 변경하기' : '배경 이미지 또는 영상 선택'}
-                </button>
+                  <SettingRow label="LED 레벨메터">
+                    <ToggleControl
+                      checked={visualEffects.lyricLedMeterEnabled ?? false}
+                      onChange={(lyricLedMeterEnabled) =>
+                        setVisualEffects((v) => ({ ...v, lyricLedMeterEnabled }))
+                      }
+                    />
+                  </SettingRow>
+
+                  {(visualEffects.lyricLedMeterEnabled ?? false) && (
+                    <>
+                      <SettingRow label="세로 위치">
+                        <SliderControl
+                          min={0.08}
+                          max={0.92}
+                          step={0.01}
+                          value={
+                            visualEffects.ledMeterPosY ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterPosY
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.ledMeterPosY ??
+                              DEFAULT_LED_METER_SETTINGS.ledMeterPosY) * 100
+                          )}%`}
+                          onChange={(ledMeterPosY) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterPosY }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="기둥 개수">
+                        <SliderControl
+                          min={4}
+                          max={16}
+                          step={1}
+                          value={
+                            visualEffects.ledMeterColumns ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterColumns
+                          }
+                          valueLabel={`${
+                            visualEffects.ledMeterColumns ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterColumns
+                          }개`}
+                          onChange={(ledMeterColumns) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterColumns }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="기둥 높이">
+                        <SliderControl
+                          min={0.5}
+                          max={2.4}
+                          step={0.05}
+                          value={
+                            visualEffects.ledMeterHeight ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterHeight
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.ledMeterHeight ??
+                              DEFAULT_LED_METER_SETTINGS.ledMeterHeight) * 100
+                          )}%`}
+                          onChange={(ledMeterHeight) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterHeight }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="기둥 두께">
+                        <SliderControl
+                          min={0.5}
+                          max={2.2}
+                          step={0.05}
+                          value={
+                            visualEffects.ledMeterThickness ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterThickness
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.ledMeterThickness ??
+                              DEFAULT_LED_METER_SETTINGS.ledMeterThickness) * 100
+                          )}%`}
+                          onChange={(ledMeterThickness) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterThickness }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="부드러운 움직임">
+                        <SliderControl
+                          min={0}
+                          max={0.92}
+                          step={0.02}
+                          value={
+                            visualEffects.ledMeterSmoothing ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.ledMeterSmoothing ??
+                              DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing) * 100
+                          )}%`}
+                          onChange={(ledMeterSmoothing) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterSmoothing }))
+                          }
+                        />
+                      </SettingRow>
+
+                      <SettingRow label="투명도">
+                        <SliderControl
+                          min={0.05}
+                          max={1}
+                          step={0.05}
+                          value={
+                            visualEffects.ledMeterOpacity ??
+                            DEFAULT_LED_METER_SETTINGS.ledMeterOpacity
+                          }
+                          valueLabel={`${Math.round(
+                            (visualEffects.ledMeterOpacity ??
+                              DEFAULT_LED_METER_SETTINGS.ledMeterOpacity) * 100
+                          )}%`}
+                          onChange={(ledMeterOpacity) =>
+                            setVisualEffects((v) => ({ ...v, ledMeterOpacity }))
+                          }
+                        />
+                      </SettingRow>
+                    </>
+                  )}
+                </SettingSection>
 
                 {background && (
-                  <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-200">{background.name}</p>
-                        <p className="text-[11px] text-slate-400">
-                          타입: {background.mediaType === 'image' ? '이미지' : '동영상 (자동 반복)'}
-                        </p>
-                      </div>
+                  <SettingSection
+                    title="배경 미디어"
+                    action={
                       <button
                         type="button"
                         onClick={() => setBackground(null)}
-                        className="rounded-lg bg-rose-500/15 p-1.5 text-rose-400 hover:bg-rose-500/25"
+                        className="rounded-md bg-rose-500/15 p-1 text-rose-400 hover:bg-rose-500/25"
+                        title="배경 제거"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    </div>
+                    }
+                  >
+                    <SettingRow label="파일 정보" align="start">
+                      <div>
+                        <p className="truncate font-semibold text-slate-200">{background.name}</p>
+                        <p className="text-[10px] text-slate-400">
+                          {background.mediaType === 'image' ? '이미지' : '동영상 (자동 반복)'}
+                        </p>
+                      </div>
+                    </SettingRow>
 
                     {background.mediaType === 'image' && (
-                      <label className="flex items-center justify-between">
-                        <span className="text-slate-300">Ken Burns 천천히 줌인 효과</span>
-                        <input
-                          type="checkbox"
+                      <SettingRow label="Ken Burns">
+                        <ToggleControl
                           checked={background.kenBurns}
-                          onChange={(e) =>
-                            setBackground((b) =>
-                              b ? { ...b, kenBurns: e.target.checked } : b
-                            )
+                          onLabel="천천히 줌인"
+                          offLabel="사용 안 함"
+                          onChange={(kenBurns) =>
+                            setBackground((b) => (b ? { ...b, kenBurns } : b))
                           }
-                          className="accent-cyan-400"
                         />
-                      </label>
+                      </SettingRow>
                     )}
 
-                    <div>
-                      <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                        <span>배경 어둡기 (자막 가독성)</span>
-                        <span>{Math.round(background.dimOpacity * 100)}%</span>
-                      </div>
-                      <input
-                        type="range"
+                    <SettingRow label="배경 어둡기">
+                      <SliderControl
                         min={0}
                         max={0.85}
                         step={0.05}
                         value={background.dimOpacity}
-                        onChange={(e) =>
-                          setBackground((b) =>
-                            b ? { ...b, dimOpacity: Number(e.target.value) } : b
-                          )
+                        valueLabel={`${Math.round(background.dimOpacity * 100)}%`}
+                        onChange={(dimOpacity) =>
+                          setBackground((b) => (b ? { ...b, dimOpacity } : b))
                         }
-                        className="w-full accent-cyan-400"
                       />
-                    </div>
+                    </SettingRow>
 
-                    <div>
-                      <div className="mb-1 flex justify-between text-[11px] text-slate-400">
-                        <span>배경 블러(흐림)</span>
-                        <span>{background.blurAmount}px</span>
-                      </div>
-                      <input
-                        type="range"
+                    <SettingRow label="배경 블러">
+                      <SliderControl
                         min={0}
                         max={24}
                         step={1}
                         value={background.blurAmount}
-                        onChange={(e) =>
-                          setBackground((b) =>
-                            b ? { ...b, blurAmount: Number(e.target.value) } : b
-                          )
+                        valueLabel={`${background.blurAmount}px`}
+                        onChange={(blurAmount) =>
+                          setBackground((b) => (b ? { ...b, blurAmount } : b))
                         }
-                        className="w-full accent-cyan-400"
                       />
-                    </div>
-                  </div>
+                    </SettingRow>
+                  </SettingSection>
                 )}
               </div>
             )}
@@ -2867,6 +2886,58 @@ export function App() {
         isOpen={showSponsorModal}
         onClose={() => setShowSponsorModal(false)}
       />
+
+      {/* 종료 전 저장 여부 확인 모달 */}
+      {showCloseConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-xs text-slate-200 shadow-2xl">
+            <h3 className="text-sm font-bold text-slate-100">프로젝트 저장</h3>
+            <p className="mt-2 leading-relaxed text-slate-300">
+              저장하지 않은 변경 사항이 있습니다. 앱을 종료하기 전에 현재 프로젝트를 저장하시겠습니까?
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={isSavingBeforeClose}
+                onClick={() => setShowCloseConfirmModal(false)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={isSavingBeforeClose}
+                onClick={() => {
+                  setShowCloseConfirmModal(false);
+                  void window.electronAPI?.confirmWindowClose?.();
+                }}
+                className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+              >
+                저장 안 함
+              </button>
+              <button
+                type="button"
+                disabled={isSavingBeforeClose}
+                onClick={async () => {
+                  setIsSavingBeforeClose(true);
+                  try {
+                    const saved = await handleSaveProject(false);
+                    if (saved) {
+                      setShowCloseConfirmModal(false);
+                      await window.electronAPI?.confirmWindowClose?.();
+                    }
+                  } finally {
+                    setIsSavingBeforeClose(false);
+                  }
+                }}
+                className="rounded-lg bg-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-50"
+              >
+                {isSavingBeforeClose ? '저장 중...' : '저장 후 종료'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

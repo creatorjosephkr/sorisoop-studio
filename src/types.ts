@@ -41,8 +41,11 @@ export interface SubtitleStylePreset {
   boxRadius: number;
   boxPaddingX: number;
   boxPaddingY: number;
+  boxBorderWidth?: number; // 0 ~ 12 px
+  boxBorderColor?: string; // hex
   position: SubtitlePosition;
-  offsetY: number; // -200 ~ +200 px (기준 1080p)
+  offsetX?: number; // -600 ~ +600 px (기준 1080p)
+  offsetY: number; // -450 ~ +450 px (기준 1080p)
   showPrevNext: boolean;
   animation: SubtitleAnimation;
   karaokeBarColor: string;
@@ -99,6 +102,9 @@ export interface VisualEffectsConfig {
   hologramOpacity: number; // 0.05 ~ 1.0
   prismRingEnabled?: boolean;
   prismRingOpacity?: number; // 0.05 ~ 1.0
+  prismRingScale?: number; // 0.5 ~ 1.8
+  prismRingThickness?: number; // 1 ~ 300 (px, 최대 선 두께)
+  prismRingColor?: string; // 'auto' | hex
   prismParticlesEnabled?: boolean;
   prismParticlesOpacity?: number; // 0.05 ~ 1.0
   hologramSmoothing?: number; // 0 ~ 0.94 (음악 반응형 홀로그램 부드러운 움직임)
@@ -112,6 +118,7 @@ export interface VisualEffectsConfig {
   spectrumThickness?: number; // 0.4 ~ 2.4
   spectrumShape?: SpectrumShape;
   spectrumSmoothing?: number; // 0 ~ 0.92
+  spectrumPosY?: number; // 0.08 ~ 0.92
   lyricLedMeterEnabled?: boolean;
   ledMeterPosY?: number; // 0.08 ~ 0.92
   ledMeterColumns?: number; // 4 ~ 16
@@ -120,6 +127,13 @@ export interface VisualEffectsConfig {
   ledMeterOpacity?: number; // 0.05 ~ 1.0
   ledMeterSmoothing?: number; // 0 ~ 0.92
 }
+
+export const DEFAULT_PRISM_RING_SETTINGS = {
+  prismRingOpacity: 0.55,
+  prismRingScale: 1.0,
+  prismRingThickness: 18,
+  prismRingColor: 'auto',
+};
 
 export const DEFAULT_SPECTRUM_SETTINGS = {
   spectrumMode: 'digital' as SpectrumMode,
@@ -131,6 +145,7 @@ export const DEFAULT_SPECTRUM_SETTINGS = {
   spectrumThickness: 1.0,
   spectrumShape: 'mirror' as SpectrumShape,
   spectrumSmoothing: 0.72,
+  spectrumPosY: 0.5,
 };
 
 export const DEFAULT_LED_METER_SETTINGS = {
@@ -186,6 +201,8 @@ export interface TextLayer {
   boxRadius: number;
   boxPaddingX: number;
   boxPaddingY: number;
+  boxBorderWidth?: number; // 0 ~ 12 px
+  boxBorderColor?: string; // hex
 }
 
 export interface BundledFont {
@@ -245,6 +262,19 @@ export interface ElectronAPI {
     extName: string,
     ext: string
   ) => Promise<string | null>;
+  saveImageFile?: (
+    defaultName: string,
+    pngDataUrl: string,
+    jpegDataUrl: string
+  ) => Promise<string | null>;
+  getPicturesDir?: () => Promise<string>;
+  pickFolder?: (defaultPath?: string) => Promise<string | null>;
+  saveImageToPath?: (options: {
+    folderPath: string;
+    fileName: string;
+    format: 'png' | 'jpg';
+    dataUrl: string;
+  }) => Promise<string>;
   transcribeWhisper: (
     pcm16k: Float32Array,
     modelId: string,
@@ -276,6 +306,9 @@ export interface ElectronAPI {
   openExternalUrl?: (url: string) => Promise<void>;
   checkAppUpdate?: () => Promise<UpdateCheckResult>;
   setAppTheme?: (theme: 'default' | 'dark-gray' | 'light-gray' | 'white') => Promise<void>;
+  setUnsavedChanges?: (dirty: boolean) => void;
+  confirmWindowClose?: () => Promise<void>;
+  onRequestClose?: (cb: () => void) => () => void;
   onOpenPrivacyPolicy?: (cb: () => void) => () => void;
   onOpenUserGuide?: (cb: () => void) => () => void;
   onOpenUpdateModal?: (cb: (prefetched?: UpdateCheckResult) => void) => () => void;

@@ -5,7 +5,7 @@ const STORAGE_KEY = 'sorisoop_subtitle_presets_v1';
 export const DEFAULT_PRESETS: SubtitleStylePreset[] = [
   {
     id: 'neon-karaoke',
-    name: '네온 가라오케 (기본)',
+    name: '네온 스타일',
     isBuiltIn: true,
     fontId: 'pretendard-bold',
     fontSize: 56,
@@ -148,7 +148,60 @@ export const DEFAULT_PRESETS: SubtitleStylePreset[] = [
     animation: 'karaoke-bar',
     karaokeBarColor: '#a78bfa',
   },
+  {
+    id: 'plain-none',
+    name: '스타일 없음',
+    isBuiltIn: true,
+    fontId: 'pretendard-medium',
+    fontSize: 48,
+    fontWeight: 500,
+    letterSpacing: 0,
+    lineHeight: 1.35,
+    textColor: '#ffffff',
+    useGradient: false,
+    gradientStart: '#ffffff',
+    gradientEnd: '#ffffff',
+    strokeColor: '#000000',
+    strokeWidth: 0,
+    shadowColor: '#000000',
+    shadowBlur: 0,
+    boxEnabled: false,
+    boxColor: '#000000',
+    boxOpacity: 0,
+    boxRadius: 0,
+    boxPaddingX: 0,
+    boxPaddingY: 0,
+    position: 'bottom',
+    offsetX: 0,
+    offsetY: 0,
+    showPrevNext: false,
+    animation: 'none',
+    karaokeBarColor: '#ffffff',
+  },
 ];
+
+export function mergeWithDefaultPresets(list: SubtitleStylePreset[]): {
+  merged: SubtitleStylePreset[];
+  migrated: boolean;
+} {
+  let migrated = false;
+  const byId = new Map(
+    list.map((p) => {
+      if (p.id === 'neon-karaoke' && (p.name.includes('가라오케') || p.name.includes('(기본)'))) {
+        migrated = true;
+        return [p.id, { ...p, name: '네온 스타일' }] as const;
+      }
+      return [p.id, p] as const;
+    })
+  );
+  for (const def of DEFAULT_PRESETS) {
+    if (!byId.has(def.id)) {
+      byId.set(def.id, def);
+      migrated = true;
+    }
+  }
+  return { merged: Array.from(byId.values()), migrated };
+}
 
 export function loadPresets(): SubtitleStylePreset[] {
   try {
@@ -157,12 +210,9 @@ export function loadPresets(): SubtitleStylePreset[] {
     const parsed = JSON.parse(raw) as SubtitleStylePreset[];
     if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_PRESETS;
 
-    // 기본 프리셋이 누락되지 않도록 병합
-    const byId = new Map(parsed.map((p) => [p.id, p]));
-    for (const def of DEFAULT_PRESETS) {
-      if (!byId.has(def.id)) byId.set(def.id, def);
-    }
-    return Array.from(byId.values());
+    const { merged, migrated } = mergeWithDefaultPresets(parsed);
+    if (migrated) savePresets(merged);
+    return merged;
   } catch {
     return DEFAULT_PRESETS;
   }

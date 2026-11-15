@@ -8,6 +8,8 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 
 let mainWindow: BrowserWindow | null = null;
+let hasUnsavedChanges = false;
+let allowWindowClose = false;
 
 interface ActiveExport {
   process: ChildProcessWithoutNullStreams;
@@ -199,6 +201,16 @@ function createWindow() {
     } else if (params.selectionText.trim().length > 0) {
       const menu = Menu.buildFromTemplate([{ label: '복사', role: 'copy' }]);
       menu.popup({ window: mainWindow ?? undefined });
+    }
+  });
+
+  allowWindowClose = false;
+  hasUnsavedChanges = false;
+
+  mainWindow.on('close', (e) => {
+    if (!allowWindowClose && hasUnsavedChanges && mainWindow && !mainWindow.isDestroyed()) {
+      e.preventDefault();
+      mainWindow.webContents.send('app:request-close');
     }
   });
 
@@ -500,6 +512,18 @@ app.on('before-quit', () => {
   }
 });
 
+ipcMain.on('app:set-unsaved-changes', (_event, dirty: boolean) => {
+  hasUnsavedChanges = Boolean(dirty);
+});
+
+ipcMain.handle('app:confirm-close', () => {
+  allowWindowClose = true;
+  hasUnsavedChanges = false;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  }
+});
+
 ipcMain.handle('app:info', () => ({
   platform: process.platform,
   version: app.getVersion(),
@@ -621,6 +645,72 @@ ipcMain.handle(
     });
     if (result.canceled || !result.filePath) return null;
     await fs.promises.writeFile(result.filePath, content, 'utf-8');
+    return result.filePath;
+  }
+);
+
+ipcMain.handle('app:get-pictures-dir', () => {
+  return app.getPath('pictures');
+});
+
+ipcMain.handle('dialog:pick-folder', async (_event, defaultPath?: string) => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: '저장 폴더 선택',
+    defaultPath: defaultPath || app.getPath('pictures'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle(
+  'file:save-image-to-path',
+  async (
+    _event,
+    {
+      folderPath,
+      fileName,
+      format,
+      dataUrl,
+    }: { folderPath: string; fileName: string; format: 'png' | 'jpg'; dataUrl: string }
+  ) => {
+    const dir = folderPath && fs.existsSync(folderPath) ? folderPath : app.getPath('pictures');
+    const safeBase = (fileName || 'frame')
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .replace(/\.(png|jpe?g)$/i, '') || 'frame';
+    const ext = format === 'jpg' ? '.jpg' : '.png';
+    const fullPath = path.join(dir, `${safeBase}${ext}`);
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    await fs.promises.writeFile(fullPath, Buffer.from(base64, 'base64'));
+    return fullPath;
+  }
+);
+
+ipcMain.handle(
+  'dialog:save-image',
+  async (
+    _event,
+    {
+      defaultName,
+      pngDataUrl,
+      jpegDataUrl,
+    }: { defaultName: string; pngDataUrl: string; jpegDataUrl: string }
+  ) => {
+    if (!mainWindow) return null;
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '현재 화면 이미지로 저장 (Export Frame)',
+      defaultPath: defaultName,
+      filters: [
+        { name: 'PNG 이미지 (*.png)', extensions: ['png'] },
+        { name: 'JPEG 이미지 (*.jpg, *.jpeg)', extensions: ['jpg', 'jpeg'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return null;
+    const lower = result.filePath.toLowerCase();
+    const dataUrl = lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? jpegDataUrl : pngDataUrl;
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    await fs.promises.writeFile(result.filePath, Buffer.from(base64, 'base64'));
     return result.filePath;
   }
 );

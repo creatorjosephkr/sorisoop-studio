@@ -137,7 +137,7 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
       </div>
 
       {/* 로컬 Whisper AI 싱크 & 스냅 액션 바 */}
-      <div className="space-y-1.5 rounded-xl border border-slate-800 bg-slate-900/70 p-2.5">
+      <div className="space-y-1.5 pb-1">
         <div className="flex gap-1.5">
           <button
             type="button"
@@ -193,7 +193,7 @@ export const SegmentListEditor: React.FC<SegmentListEditorProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center justify-between rounded-lg bg-slate-950/70 px-2 py-1 text-[10px] text-slate-400">
+        <div className="flex items-center justify-between pt-0.5 text-[10px] text-slate-400">
           <span>전체 싱크 일괄 이동</span>
           <div className="flex gap-1">
             {[-0.5, -0.1, 0.1, 0.5].map((d) => (

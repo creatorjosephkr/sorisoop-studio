@@ -531,12 +531,8 @@ export function renderMusicVideoFrame({
           ctx.fillRect(0, 0, width, height);
         }
       } else {
-        // 기본 다크 앰비언트 배경
-        const grad = ctx.createLinearGradient(0, 0, width, height);
-        grad.addColorStop(0, '#020617');
-        grad.addColorStop(0.5, '#0f172a');
-        grad.addColorStop(1, '#1e1b4b');
-        ctx.fillStyle = grad;
+        // 기본 검은색 배경
+        ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, width, height);
       }
     }
@@ -704,7 +700,7 @@ export function renderMusicVideoFrame({
     ctx.restore();
   }
 
-  // 1-A2. 칼라 홀로그램 프리즘 링 (음악 반응형)
+  // 1-A2. 칼라 홀로그램 프리즘 링 (크기 / 가변 선 두께 / 색상 / 음악 반응형 움직임)
   if (!transparentBackground && visualEffects?.prismRingEnabled) {
     const rawBins = hologramBins;
     let bass = 0;
@@ -721,49 +717,108 @@ export function renderMusicVideoFrame({
     mid /= third;
     treble /= Math.max(1, rawBins.length - third * 2);
 
-    const cx = width / 2;
-    const cy = height / 2;
-    const minDim = Math.min(width, height);
+    const ringScale = Math.max(0.5, Math.min(1.8, visualEffects.prismRingScale ?? 1.0));
+    const maxThickPx = Math.max(1, Math.min(300, visualEffects.prismRingThickness ?? 18));
+    const customColor = visualEffects.prismRingColor ?? 'auto';
+    const isAutoColor = customColor === 'auto';
+
+    // 음악 에너지에 따라 전체 중심이 살짝 유영하며 살아 움직이도록 오프셋 적용
     const t = currentTime;
+    const cx = width / 2 + Math.sin(t * 1.1) * (4 + bass * 18) * baseScale;
+    const cy = height / 2 + Math.cos(t * 0.85) * (4 + mid * 16) * baseScale;
+    const minDim = Math.min(width, height);
 
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.prismRingOpacity ?? 0.55));
     ctx.globalCompositeOperation = 'screen';
 
     const ringCount = 3;
+    const points = 120;
     for (let ring = 0; ring < ringCount; ring++) {
-      const baseR = minDim * (0.2 + ring * 0.095) + bass * minDim * 0.055;
-      const points = 72;
-      const rot = t * (0.22 + ring * 0.14) * (ring % 2 === 0 ? 1 : -1);
+      const baseR =
+        minDim * (0.18 + ring * 0.088) * ringScale +
+        bass * minDim * (0.065 + ring * 0.015) * ringScale;
+      const rot =
+        (t * (0.26 + ring * 0.16) + Math.sin(t * 1.4 + ring) * (0.15 + mid * 0.45)) *
+        (ring % 2 === 0 ? 1 : -1);
 
-      ctx.beginPath();
-      for (let i = 0; i <= points; i++) {
+      const centerPts: Array<{ x: number; y: number; halfW: number }> = [];
+      for (let i = 0; i < points; i++) {
         const angle = (i / points) * Math.PI * 2;
-        const binIdx = Math.floor(((i % points) / points) * rawBins.length);
+        const binIdx = Math.floor((i / points) * rawBins.length);
         const binVal = rawBins[binIdx] / 255;
+
+        // 다중 파동 + 주파수 강도로 전체 선의 형태와 움직임이 음악에 맞춰 유기적으로 변형
         const wave =
-          Math.sin(angle * (3 + ring) + rot * 2.2) * (8 + mid * 22) * baseScale +
-          binVal * (14 + treble * 26) * baseScale;
+          Math.sin(angle * (3 + ring) + rot * 2.4) * (8 + mid * 28) * ringScale * baseScale +
+          Math.cos(angle * (5 + ring * 2) - t * (1.8 + treble * 2.0)) *
+            (4 + treble * 16) *
+            ringScale *
+            baseScale +
+          binVal * (14 + bass * 32) * ringScale * baseScale;
         const r = baseR + wave;
         const px = cx + Math.cos(angle + rot) * r;
         const py = cy + Math.sin(angle + rot) * r;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+
+        // 마디 없이 1px ~ maxThickPx 까지 음악에 따라 불규칙하게 두께 변화
+        const n1 = Math.sin(angle * 2 + t * 2.3 + ring * 1.7);
+        const n2 = Math.cos(angle * 5 - t * 3.7 + ring * 2.9);
+        const n3 = Math.sin(angle * 7 + t * 4.9 - ring * 1.1);
+        const irregular = Math.max(
+          0,
+          Math.min(1, 0.5 + (n1 * 0.45 + n2 * 0.35 + n3 * 0.2) * 0.55)
+        );
+        const rawMix = binVal * 0.55 + irregular * (0.25 + bass * 0.55 + treble * 0.25);
+        const intensity = Math.max(0, Math.min(1, Math.pow(rawMix, 1.55)));
+        const localWidth = (1 + (maxThickPx - 1) * intensity) * baseScale;
+        centerPts.push({ x: px, y: py, halfW: localWidth * 0.5 });
+      }
+
+      // 외곽/내곽 점 계산 (단일 닫힌 리본 폴리곤으로 마디 겹침 없이 매끄럽게 채우기)
+      const outerPts: Array<{ x: number; y: number }> = [];
+      const innerPts: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i < points; i++) {
+        const prev = centerPts[(i - 1 + points) % points];
+        const cur = centerPts[i];
+        const next = centerPts[(i + 1) % points];
+        const tx = next.x - prev.x;
+        const ty = next.y - prev.y;
+        const len = Math.hypot(tx, ty) || 1;
+        const nx = -ty / len;
+        const ny = tx / len;
+        outerPts.push({ x: cur.x + nx * cur.halfW, y: cur.y + ny * cur.halfW });
+        innerPts.push({ x: cur.x - nx * cur.halfW, y: cur.y - ny * cur.halfW });
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(outerPts[0].x, outerPts[0].y);
+      for (let i = 1; i < points; i++) {
+        ctx.lineTo(outerPts[i].x, outerPts[i].y);
       }
       ctx.closePath();
 
-      const hueA = (t * 28 + ring * 95) % 360;
-      const hueB = (hueA + 140) % 360;
-      const grad = ctx.createLinearGradient(cx - baseR, cy - baseR, cx + baseR, cy + baseR);
-      grad.addColorStop(0, `hsla(${hueA}, 92%, 68%, 0.85)`);
-      grad.addColorStop(0.5, `hsla(${(hueA + 70) % 360}, 95%, 74%, 0.95)`);
-      grad.addColorStop(1, `hsla(${hueB}, 92%, 66%, 0.85)`);
+      // 안쪽 구멍을 반대로 돌아서 evenodd/nonzero 구멍 뚫린 단일 리본 패스 생성
+      ctx.moveTo(innerPts[0].x, innerPts[0].y);
+      for (let i = points - 1; i >= 1; i--) {
+        ctx.lineTo(innerPts[i].x, innerPts[i].y);
+      }
+      ctx.closePath();
 
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = (2.6 - ring * 0.5 + bass * 2.4) * baseScale;
-      ctx.shadowColor = `hsla(${hueA}, 95%, 65%, 0.65)`;
-      ctx.shadowBlur = (14 + treble * 18) * baseScale;
-      ctx.stroke();
+      const hueA = (t * 32 + ring * 95) % 360;
+      const hueB = (hueA + 150) % 360;
+      if (isAutoColor) {
+        const grad = ctx.createLinearGradient(cx - baseR, cy - baseR, cx + baseR, cy + baseR);
+        grad.addColorStop(0, `hsla(${hueA}, 92%, 68%, 0.9)`);
+        grad.addColorStop(0.5, `hsla(${(hueA + 75) % 360}, 95%, 74%, 0.95)`);
+        grad.addColorStop(1, `hsla(${hueB}, 92%, 66%, 0.9)`);
+        ctx.fillStyle = grad;
+        ctx.shadowColor = `hsla(${hueA}, 95%, 65%, 0.65)`;
+      } else {
+        ctx.fillStyle = customColor;
+        ctx.shadowColor = customColor;
+      }
+      ctx.shadowBlur = (10 + treble * 18) * baseScale;
+      ctx.fill('evenodd');
     }
 
     ctx.restore();
@@ -789,10 +844,15 @@ export function renderMusicVideoFrame({
       const fy = s2 - Math.floor(s2);
       const binVal = rawBins[i % rawBins.length] / 255;
 
-      const driftX = Math.sin(t * (0.35 + (i % 5) * 0.08) + i) * (0.04 + energy * 0.04);
-      const driftY = ((t * (0.03 + (i % 4) * 0.012) * (1 + energy * 0.9)) % 1.2);
+      // 공기 중에 먼지가 가볍게 떠다니는 다방향 부유 운동 (한 방향 낙하 제거)
+      const driftX =
+        Math.sin(t * (0.22 + (i % 5) * 0.05) + i * 1.7) * 0.045 +
+        Math.cos(t * (0.13 + (i % 3) * 0.04) + i * 0.9) * 0.025;
+      const driftY =
+        Math.cos(t * (0.19 + (i % 4) * 0.045) + i * 2.3) * 0.045 +
+        Math.sin(t * (0.11 + (i % 6) * 0.03) + i * 1.1) * 0.025;
       const px = ((fx + driftX + 1) % 1) * width;
-      const py = ((fy - driftY + 2) % 1) * height;
+      const py = ((fy + driftY + 1) % 1) * height;
 
       const size = (2.2 + (i % 4) * 1.4 + binVal * 6.5) * baseScale;
       const hue = (t * 40 + i * 23) % 360;
@@ -872,7 +932,8 @@ export function renderMusicVideoFrame({
     const binCount = bins.length;
     const specWidth = width * widthRatio;
     const startX = (width - specWidth) / 2;
-    const centerY = height / 2;
+    const specPosYRatio = Math.max(0.08, Math.min(0.92, visualEffects.spectrumPosY ?? 0.5));
+    const centerY = height * specPosYRatio;
     const maxAmp = height * heightRatio;
 
     ctx.save();
@@ -1197,13 +1258,14 @@ export function renderMusicVideoFrame({
   const lineHeightPx = fontSizePx * preset.lineHeight;
   const totalTextHeight = lines.length * lineHeightPx;
 
+  const anchorX = width / 2 + (preset.offsetX ?? 0) * baseScale;
   let anchorY = height / 2;
   if (preset.position === 'top') anchorY = height * 0.18;
   else if (preset.position === 'bottom') anchorY = height * 0.82;
   anchorY += preset.offsetY * baseScale;
 
   ctx.save();
-  ctx.translate(width / 2, anchorY);
+  ctx.translate(anchorX, anchorY);
   ctx.scale(animScale, animScale);
 
   const widestLine = Math.max(...lines.map((l) => ctx.measureText(l).width));
@@ -1220,6 +1282,16 @@ export function renderMusicVideoFrame({
     ctx.beginPath();
     ctx.roundRect(-boxW / 2, -boxH / 2, boxW, boxH, radius);
     ctx.fill();
+
+    const borderW = preset.boxBorderWidth ?? 0;
+    if (borderW > 0) {
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = borderW * baseScale;
+      ctx.strokeStyle = preset.boxBorderColor ?? '#ffffff';
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // 6. 이전/다음 구절 힌트
