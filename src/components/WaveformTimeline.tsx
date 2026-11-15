@@ -401,8 +401,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     clipId?: string;
     textId?: string;
     segmentId?: string;
+    playhead?: boolean;
   }): number[] => {
-    const pts: number[] = [0, currentTime];
+    const pts: number[] = exclude?.playhead ? [0] : [0, currentTime];
     if (duration > 0) pts.push(duration);
     for (const s of segments) {
       if (s.id === exclude?.segmentId) continue;
@@ -664,21 +665,33 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     onUpdateTextLayer,
   ]);
 
-  // 시간 눈금자 / 재생헤드 드래그 스크러빙
+  // 시간 눈금자 / 재생헤드 드래그 스크러빙 (자석 스냅 지원)
   useEffect(() => {
-    const seekFromClientX = (clientX: number) => {
+    const seekFromClientX = (clientX: number, altKey: boolean) => {
       const rulerEl = rulerRef.current;
       if (!rulerEl || displayDuration <= 0) return;
       const rect = rulerEl.getBoundingClientRect();
       if (rect.width <= 0) return;
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      onSeek(Math.min(timelineDuration, ratio * displayDuration));
+      const rawTime = Math.min(timelineDuration, ratio * displayDuration);
+      const useSnap = snapEnabled && !altKey;
+      if (useSnap) {
+        const thresholdSec = (8 / rect.width) * displayDuration;
+        const pts = collectSnapPoints({ playhead: true });
+        const res = snapEdgeTime(rawTime, pts, thresholdSec);
+        setSnapGuideTime(res.snappedTo);
+        onSeek(Math.min(timelineDuration, res.time));
+      } else {
+        setSnapGuideTime(null);
+        onSeek(rawTime);
+      }
     };
     const onWinMouseMove = (e: MouseEvent) => {
       if (!isRulerDraggingRef.current) return;
-      seekFromClientX(e.clientX);
+      seekFromClientX(e.clientX, e.altKey);
     };
     const onWinMouseUp = () => {
+      if (isRulerDraggingRef.current) setSnapGuideTime(null);
       isRulerDraggingRef.current = false;
     };
     window.addEventListener('mousemove', onWinMouseMove);
@@ -687,7 +700,16 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       window.removeEventListener('mousemove', onWinMouseMove);
       window.removeEventListener('mouseup', onWinMouseUp);
     };
-  }, [timelineDuration, displayDuration, onSeek]);
+  }, [
+    timelineDuration,
+    displayDuration,
+    duration,
+    snapEnabled,
+    segments,
+    videoClips,
+    rangedTextLayers,
+    onSeek,
+  ]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
