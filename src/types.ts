@@ -97,6 +97,10 @@ export type SpectrumShape = 'mirror' | 'bottom' | 'dots' | 'line';
 export interface VisualEffectsConfig {
   hologramEnabled: boolean;
   hologramOpacity: number; // 0.05 ~ 1.0
+  prismRingEnabled?: boolean;
+  prismRingOpacity?: number; // 0.05 ~ 1.0
+  prismParticlesEnabled?: boolean;
+  prismParticlesOpacity?: number; // 0.05 ~ 1.0
   spectrumEnabled: boolean;
   spectrumMode: SpectrumMode;
   spectrumOpacity: number; // 0.05 ~ 1.0
@@ -108,6 +112,12 @@ export interface VisualEffectsConfig {
   spectrumShape?: SpectrumShape;
   spectrumSmoothing?: number; // 0 ~ 0.92
   lyricLedMeterEnabled?: boolean;
+  ledMeterPosY?: number; // 0.08 ~ 0.92
+  ledMeterColumns?: number; // 4 ~ 16
+  ledMeterHeight?: number; // 0.5 ~ 2.4
+  ledMeterThickness?: number; // 0.5 ~ 2.2
+  ledMeterOpacity?: number; // 0.05 ~ 1.0
+  ledMeterSmoothing?: number; // 0 ~ 0.92
 }
 
 export const DEFAULT_SPECTRUM_SETTINGS = {
@@ -120,6 +130,15 @@ export const DEFAULT_SPECTRUM_SETTINGS = {
   spectrumThickness: 1.0,
   spectrumShape: 'mirror' as SpectrumShape,
   spectrumSmoothing: 0.72,
+};
+
+export const DEFAULT_LED_METER_SETTINGS = {
+  ledMeterPosY: 0.85,
+  ledMeterColumns: 6,
+  ledMeterHeight: 1.0,
+  ledMeterThickness: 1.0,
+  ledMeterOpacity: 0.95,
+  ledMeterSmoothing: 0.68,
 };
 
 export type TextTransitionType =

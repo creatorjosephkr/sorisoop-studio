@@ -32,6 +32,7 @@ import { ensureBundledFontsLoaded } from './fonts/fonts';
 import {
   AspectRatio,
   BackgroundMedia,
+  DEFAULT_LED_METER_SETTINGS,
   DEFAULT_SPECTRUM_SETTINGS,
   LyricSegment,
   SpectrumBand,
@@ -236,6 +237,10 @@ export function App() {
   const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>({
     hologramEnabled: initialSettings.visualEffects?.hologramEnabled ?? true,
     hologramOpacity: initialSettings.visualEffects?.hologramOpacity ?? 0.38,
+    prismRingEnabled: initialSettings.visualEffects?.prismRingEnabled ?? false,
+    prismRingOpacity: initialSettings.visualEffects?.prismRingOpacity ?? 0.55,
+    prismParticlesEnabled: initialSettings.visualEffects?.prismParticlesEnabled ?? false,
+    prismParticlesOpacity: initialSettings.visualEffects?.prismParticlesOpacity ?? 0.6,
     spectrumEnabled: initialSettings.visualEffects?.spectrumEnabled ?? true,
     spectrumMode:
       initialSettings.visualEffects?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
@@ -258,6 +263,20 @@ export function App() {
       initialSettings.visualEffects?.spectrumSmoothing ??
       DEFAULT_SPECTRUM_SETTINGS.spectrumSmoothing,
     lyricLedMeterEnabled: initialSettings.visualEffects?.lyricLedMeterEnabled ?? true,
+    ledMeterPosY:
+      initialSettings.visualEffects?.ledMeterPosY ?? DEFAULT_LED_METER_SETTINGS.ledMeterPosY,
+    ledMeterColumns:
+      initialSettings.visualEffects?.ledMeterColumns ?? DEFAULT_LED_METER_SETTINGS.ledMeterColumns,
+    ledMeterHeight:
+      initialSettings.visualEffects?.ledMeterHeight ?? DEFAULT_LED_METER_SETTINGS.ledMeterHeight,
+    ledMeterThickness:
+      initialSettings.visualEffects?.ledMeterThickness ??
+      DEFAULT_LED_METER_SETTINGS.ledMeterThickness,
+    ledMeterOpacity:
+      initialSettings.visualEffects?.ledMeterOpacity ?? DEFAULT_LED_METER_SETTINGS.ledMeterOpacity,
+    ledMeterSmoothing:
+      initialSettings.visualEffects?.ledMeterSmoothing ??
+      DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing,
   });
   const [spectrumBins, setSpectrumBins] = useState<Uint8Array | null>(null);
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
@@ -2071,6 +2090,85 @@ export function App() {
                     </div>
                   )}
 
+                  <div className="border-t border-slate-800 pt-2.5 space-y-2">
+                    <label className="flex items-center justify-between">
+                      <span className="text-slate-200">칼라 홀로그램 프리즘 링</span>
+                      <input
+                        type="checkbox"
+                        checked={visualEffects.prismRingEnabled ?? false}
+                        onChange={(e) =>
+                          setVisualEffects((v) => ({ ...v, prismRingEnabled: e.target.checked }))
+                        }
+                        className="accent-cyan-400"
+                      />
+                    </label>
+
+                    {visualEffects.prismRingEnabled && (
+                      <div>
+                        <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                          <span>프리즘 링 투명도</span>
+                          <span>{Math.round((visualEffects.prismRingOpacity ?? 0.55) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.05}
+                          max={1}
+                          step={0.05}
+                          value={visualEffects.prismRingOpacity ?? 0.55}
+                          onChange={(e) =>
+                            setVisualEffects((v) => ({
+                              ...v,
+                              prismRingOpacity: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full accent-cyan-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-800 pt-2.5 space-y-2">
+                    <label className="flex items-center justify-between">
+                      <span className="text-slate-200">칼라 홀로그램 스타더스트 입자</span>
+                      <input
+                        type="checkbox"
+                        checked={visualEffects.prismParticlesEnabled ?? false}
+                        onChange={(e) =>
+                          setVisualEffects((v) => ({
+                            ...v,
+                            prismParticlesEnabled: e.target.checked,
+                          }))
+                        }
+                        className="accent-cyan-400"
+                      />
+                    </label>
+
+                    {visualEffects.prismParticlesEnabled && (
+                      <div>
+                        <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                          <span>스타더스트 투명도</span>
+                          <span>
+                            {Math.round((visualEffects.prismParticlesOpacity ?? 0.6) * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.05}
+                          max={1}
+                          step={0.05}
+                          value={visualEffects.prismParticlesOpacity ?? 0.6}
+                          onChange={(e) =>
+                            setVisualEffects((v) => ({
+                              ...v,
+                              prismParticlesOpacity: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full accent-cyan-400"
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="border-t border-slate-800 pt-2.5 space-y-2.5">
                     <label className="flex items-center justify-between">
                       <span className="text-slate-200">중앙 오디오 스펙트럼 표시</span>
@@ -2336,9 +2434,9 @@ export function App() {
                     )}
                   </div>
 
-                  <div className="border-t border-slate-800 pt-2.5">
+                  <div className="border-t border-slate-800 pt-2.5 space-y-2.5">
                     <label className="flex items-center justify-between">
-                      <span className="text-slate-200">가사 아래 6기둥 LED 레벨메터</span>
+                      <span className="text-slate-200">LED 오디오 레벨메터</span>
                       <input
                         type="checkbox"
                         checked={visualEffects.lyricLedMeterEnabled ?? true}
@@ -2351,6 +2449,208 @@ export function App() {
                         className="accent-cyan-400"
                       />
                     </label>
+
+                    {(visualEffects.lyricLedMeterEnabled ?? true) && (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>세로 위치</span>
+                              <span>
+                                {Math.round(
+                                  (visualEffects.ledMeterPosY ??
+                                    DEFAULT_LED_METER_SETTINGS.ledMeterPosY) * 100
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.08}
+                              max={0.92}
+                              step={0.01}
+                              value={
+                                visualEffects.ledMeterPosY ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterPosY
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterPosY: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>기둥 개수</span>
+                              <span>
+                                {visualEffects.ledMeterColumns ??
+                                  DEFAULT_LED_METER_SETTINGS.ledMeterColumns}
+                                개
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={4}
+                              max={16}
+                              step={1}
+                              value={
+                                visualEffects.ledMeterColumns ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterColumns
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterColumns: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>기둥 높이</span>
+                              <span>
+                                {Math.round(
+                                  (visualEffects.ledMeterHeight ??
+                                    DEFAULT_LED_METER_SETTINGS.ledMeterHeight) * 100
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.5}
+                              max={2.4}
+                              step={0.05}
+                              value={
+                                visualEffects.ledMeterHeight ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterHeight
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterHeight: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>기둥 두께</span>
+                              <span>
+                                {Math.round(
+                                  (visualEffects.ledMeterThickness ??
+                                    DEFAULT_LED_METER_SETTINGS.ledMeterThickness) * 100
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.5}
+                              max={2.2}
+                              step={0.05}
+                              value={
+                                visualEffects.ledMeterThickness ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterThickness
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterThickness: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>부드러운 움직임</span>
+                              <span>
+                                {Math.round(
+                                  (visualEffects.ledMeterSmoothing ??
+                                    DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing) * 100
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={0.92}
+                              step={0.02}
+                              value={
+                                visualEffects.ledMeterSmoothing ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterSmoothing: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                              <span>투명도</span>
+                              <span>
+                                {Math.round(
+                                  (visualEffects.ledMeterOpacity ??
+                                    DEFAULT_LED_METER_SETTINGS.ledMeterOpacity) * 100
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.05}
+                              max={1}
+                              step={0.05}
+                              value={
+                                visualEffects.ledMeterOpacity ??
+                                DEFAULT_LED_METER_SETTINGS.ledMeterOpacity
+                              }
+                              onChange={(e) =>
+                                setVisualEffects((v) => ({
+                                  ...v,
+                                  ledMeterOpacity: Number(e.target.value),
+                                }))
+                              }
+                              className="w-full accent-cyan-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisualEffects((v) => ({
+                                ...v,
+                                ...DEFAULT_LED_METER_SETTINGS,
+                              }))
+                            }
+                            className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[10px] text-slate-300 hover:bg-slate-700"
+                            title="LED 레벨메터 설정을 기본값으로 되돌립니다"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            기본값 되돌리기
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
