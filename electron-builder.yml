@@ -21,6 +21,13 @@ mac:
   icon: app-icon.icns
   category: public.app-category.video
   artifactName: SoriSoop_MV_Studio_v${version}-Mac-${arch}.${ext}
+  extendInfo:
+    CFBundleDisplayName: 소리숲 뮤직비디오 스튜디오
+    CFBundleName: 소리숲 뮤직비디오 스튜디오
+    LSHasLocalizedDisplayName: true
+  extraResources:
+    - from: build/mac/ko.lproj
+      to: ko.lproj
   target:
     - dmg
     - zip
@@ -33,3 +40,5 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  shortcutName: 소리숲 뮤직비디오 스튜디오
+  uninstallDisplayName: 소리숲 뮤직비디오 스튜디오
