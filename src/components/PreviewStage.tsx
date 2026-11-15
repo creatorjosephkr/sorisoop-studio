@@ -1,13 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowRight,
   Camera,
+  FileText,
+  Film,
   FolderOpen,
+  Image as ImageIcon,
+  Link2,
   Maximize2,
   Minimize2,
+  Music,
   Pause,
   Play,
   SkipBack,
   SkipForward,
+  Sliders,
+  Sparkles,
   X,
 } from 'lucide-react';
 import {
@@ -59,6 +67,58 @@ const ASPECT_DIMENSIONS: Record<AspectRatio, { w: number; h: number }> = {
   '9:16': { w: 720, h: 1280 },
   '1:1': { w: 900, h: 900 },
 };
+
+const QUICK_START_STEPS = [
+  {
+    step: 1,
+    title: '노래 파일 가져오기',
+    desc: 'MP3 · WAV 음원 불러오기',
+    Icon: Music,
+    badgeClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-400/30',
+    iconClass: 'text-indigo-400',
+  },
+  {
+    step: 2,
+    title: '전체 가사 입력',
+    optional: true,
+    desc: 'AI 자동 싱크용 가사 입력',
+    Icon: FileText,
+    badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/30',
+    iconClass: 'text-cyan-400',
+  },
+  {
+    step: 3,
+    title: '가사 빈틈 연결/정리',
+    desc: '무음 · 간주 구간 다듬기',
+    Icon: Link2,
+    badgeClass: 'bg-violet-500/20 text-violet-300 border-violet-400/30',
+    iconClass: 'text-violet-400',
+  },
+  {
+    step: 4,
+    title: '가사 싱크 세부 조절',
+    desc: '타임라인에서 타이밍 조정',
+    Icon: Sliders,
+    badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30',
+    iconClass: 'text-emerald-400',
+  },
+  {
+    step: 5,
+    title: '배경 설정',
+    desc: '영상 · 이미지 · 비주얼 효과',
+    Icon: ImageIcon,
+    badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-400/30',
+    iconClass: 'text-amber-400',
+  },
+  {
+    step: 6,
+    title: '내보내기',
+    desc: '고화질 MP4 · 자막 저장',
+    Icon: Film,
+    badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-400/30',
+    iconClass: 'text-rose-400',
+  },
+] as const;
 
 export const PreviewStage: React.FC<PreviewStageProps> = ({
   aspectRatio,
@@ -309,6 +369,12 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
   }, [aspectRatio, currentTime, duration, segments, preset, background, videoClips, textLayers, visualEffects, spectrumBins, waveformSamples, mediaVersion]);
 
   const totalDuration = Math.max(duration, ...videoClips.map((c) => c.timelineEnd), 0);
+  const hasAnySource =
+    duration > 0 ||
+    segments.length > 0 ||
+    background !== null ||
+    videoClips.length > 0 ||
+    textLayers.length > 0;
 
   return (
     <div
@@ -325,6 +391,60 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
         {isFullscreenPreview && (
           <div className="pointer-events-none absolute top-2 left-2.5 z-10 select-none rounded bg-black/45 px-2 py-0.5 text-[10px] text-slate-300/80">
             전체화면 종료: ~ / ESC
+          </div>
+        )}
+        {!hasAnySource && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-y-auto bg-gradient-to-br from-slate-950/90 via-[#151824]/90 to-slate-950/90 p-3">
+            <div className="w-full max-w-[600px] space-y-2.5">
+              <div className="flex flex-col items-center text-center">
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-semibold tracking-wide text-cyan-300">
+                  <Sparkles className="h-3 w-3" />
+                  기본 사용 과정
+                </span>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  노래 파일이나 배경 소스를 추가하면 실시간 미리보기 화면으로 전환됩니다
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {QUICK_START_STEPS.map((item) => {
+                  const Icon = item.Icon;
+                  return (
+                    <div
+                      key={item.step}
+                      className="relative flex flex-col justify-between rounded-xl border border-slate-700/60 bg-slate-900/75 p-2.5 shadow-sm backdrop-blur-sm"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span
+                          className={`inline-flex h-5 w-5 items-center justify-center rounded-md border text-[10px] font-bold ${item.badgeClass}`}
+                        >
+                          {item.step}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {'optional' in item && item.optional && (
+                            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">
+                              선택사항
+                            </span>
+                          )}
+                          <Icon className={`h-3.5 w-3.5 ${item.iconClass}`} />
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold leading-tight text-slate-100">
+                          {item.title}
+                        </p>
+                        <p className="mt-0.5 text-[10px] leading-tight text-slate-400">
+                          {item.desc}
+                        </p>
+                      </div>
+                      {item.step < 6 && (
+                        <ArrowRight className="pointer-events-none absolute -right-1.5 top-1/2 hidden h-3 w-3 -translate-y-1/2 text-slate-600 sm:block" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
         <canvas
