@@ -53,6 +53,7 @@ import {
 } from './types';
 import {
   DEFAULT_TRANSITION_DURATION,
+  fitVideoClipToSegment,
   joinVideoClipsGaps,
   moveVideoClip,
   probeMediaClipInfo,
@@ -2282,6 +2283,46 @@ export function App() {
             onMoveClip={(id, newStartTime) =>
               setVideoClips((prev) => moveVideoClip(prev, id, newStartTime), false)
             }
+            onFitClipToSegment={(clipId, refTime) => {
+              const clip = videoClips.find((c) => c.id === clipId);
+              if (!clip || segments.length === 0) return;
+
+              let targetSeg =
+                refTime !== undefined
+                  ? segments.find((s) => refTime >= s.startTime && refTime <= s.endTime)
+                  : undefined;
+
+              if (!targetSeg) {
+                let bestOverlap = 0;
+                for (const s of segments) {
+                  const overlap =
+                    Math.min(clip.timelineEnd, s.endTime) -
+                    Math.max(clip.timelineStart, s.startTime);
+                  if (overlap > bestOverlap) {
+                    bestOverlap = overlap;
+                    targetSeg = s;
+                  }
+                }
+              }
+
+              if (!targetSeg && selectedSegmentId) {
+                targetSeg = segments.find((s) => s.id === selectedSegmentId);
+              }
+
+              if (!targetSeg) {
+                targetSeg = segments.reduce((best, s) =>
+                  Math.abs(s.startTime - clip.timelineStart) <
+                  Math.abs(best.startTime - clip.timelineStart)
+                    ? s
+                    : best
+                );
+              }
+
+              if (!targetSeg) return;
+              setVideoClips((prev) =>
+                fitVideoClipToSegment(prev, clipId, targetSeg!.startTime, targetSeg!.endTime)
+              );
+            }}
             onUpdateClip={(id, patch, recordHistory = true) =>
               setVideoClips((prev) => {
                 if (patch.playbackRate !== undefined) {

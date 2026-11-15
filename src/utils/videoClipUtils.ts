@@ -331,3 +331,79 @@ export function moveVideoClip(
   };
   return sortClips([...others, moved]);
 }
+
+/**
+ * 클립을 지정된 자막 구간 [segStart, segEnd]에 맞춥니다.
+ * - 영상: 구간보다 짧으면 속도를 느리게(0.25x~1x) 조절해 맞추고, 길면 1x 속도로 뒷부분을 트림합니다.
+ * - 이미지: 길이만 자막 구간에 맞춥니다.
+ */
+export function fitVideoClipToSegment(
+  clips: VideoClip[],
+  clipId: string,
+  segStart: number,
+  segEnd: number
+): VideoClip[] {
+  const cur = clips.find((c) => c.id === clipId);
+  if (!cur) return clips;
+
+  const targetStart = Math.max(0, Number(segStart.toFixed(2)));
+  const targetEnd = Math.max(targetStart + MIN_CLIP_DURATION, Number(segEnd.toFixed(2)));
+  const targetDur = targetEnd - targetStart;
+
+  let nextClip: VideoClip;
+  if (cur.mediaType === 'video') {
+    const availableSourceDur = Math.max(MIN_CLIP_DURATION, cur.sourceDuration - cur.sourceIn);
+    if (availableSourceDur < targetDur) {
+      const rate = Math.max(
+        0.25,
+        Math.min(4, Number((availableSourceDur / targetDur).toFixed(2)))
+      );
+      nextClip = {
+        ...cur,
+        timelineStart: targetStart,
+        timelineEnd: targetEnd,
+        playbackRate: rate,
+      };
+    } else {
+      nextClip = {
+        ...cur,
+        timelineStart: targetStart,
+        timelineEnd: targetEnd,
+        playbackRate: 1,
+      };
+    }
+  } else {
+    nextClip = {
+      ...cur,
+      timelineStart: targetStart,
+      timelineEnd: targetEnd,
+    };
+  }
+
+  const others = sortClips(clips.filter((c) => c.id !== clipId));
+  const adjustedOthers: VideoClip[] = [];
+  let pushCursor = targetEnd;
+  for (const c of others) {
+    if (c.timelineEnd <= targetStart + 0.01) {
+      adjustedOthers.push(c);
+    } else if (c.timelineStart < targetStart && c.timelineEnd > targetStart) {
+      adjustedOthers.push({
+        ...c,
+        timelineEnd: Math.max(c.timelineStart + MIN_CLIP_DURATION, targetStart),
+      });
+    } else {
+      const len = Math.max(MIN_CLIP_DURATION, c.timelineEnd - c.timelineStart);
+      if (c.timelineStart < pushCursor) {
+        const nextStart = Number(pushCursor.toFixed(2));
+        const nextEnd = Number((nextStart + len).toFixed(2));
+        adjustedOthers.push({ ...c, timelineStart: nextStart, timelineEnd: nextEnd });
+        pushCursor = nextEnd;
+      } else {
+        adjustedOthers.push(c);
+        pushCursor = Math.max(pushCursor, c.timelineEnd);
+      }
+    }
+  }
+
+  return sortClips([...adjustedOthers, nextClip]);
+}

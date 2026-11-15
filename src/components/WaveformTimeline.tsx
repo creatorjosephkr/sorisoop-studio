@@ -73,6 +73,7 @@ interface WaveformTimelineProps {
   onTrimClipEdge: (id: string, edge: 'start' | 'end', newTime: number) => void;
   onMoveClip: (id: string, newStartTime: number) => void;
   onUpdateClip: (id: string, patch: Partial<VideoClip>, recordHistory?: boolean) => void;
+  onFitClipToSegment?: (clipId: string, refTime?: number) => void;
   textLayers: TextLayer[];
   selectedTextLayerId: string | null;
   selectedTextLayerIds?: string[];
@@ -133,6 +134,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   onTrimClipEdge,
   onMoveClip,
   onUpdateClip,
+  onFitClipToSegment,
   textLayers,
   selectedTextLayerId,
   selectedTextLayerIds,
@@ -1228,7 +1230,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 <button
                   type="button"
                   onClick={() => onUpdateClip(selClip.id, { fitToFrame: !selClip.fitToFrame })}
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${
+                  className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 ${
                     selClip.fitToFrame
                       ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
                       : 'bg-slate-800 text-slate-400'
@@ -1238,6 +1240,19 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   <Maximize2 className="h-3 w-3" />
                   {selClip.fitToFrame ? '프레임 맞춤' : '원본 비율'}
                 </button>
+
+                {onFitClipToSegment && (
+                  <button
+                    type="button"
+                    disabled={segments.length === 0}
+                    onClick={() => onFitClipToSegment(selClip.id)}
+                    className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-sky-300 hover:bg-sky-500/20 disabled:opacity-35"
+                    title="선택한 클립을 자막 구간 길이에 맞추기 (짧으면 느리게, 길면 트림)"
+                  >
+                    <Link2 className="h-3 w-3" />
+                    구간에 맞추기
+                  </button>
+                )}
 
                 <div className="flex items-center gap-1">
                   <Sparkles className="h-3 w-3 text-cyan-400" />
@@ -2292,7 +2307,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       {/* 타임라인 소스 우클릭 컨텍스트 메뉴 */}
       {sourceContextMenu && (() => {
         const menuW = 196;
-        const menuH = sourceContextMenu.kind === 'clip' ? 330 : 220;
+        const menuH = sourceContextMenu.kind === 'clip' ? 360 : 220;
         const left = Math.min(sourceContextMenu.x, Math.max(8, window.innerWidth - menuW - 8));
         const top = Math.min(sourceContextMenu.y, Math.max(8, window.innerHeight - menuH - 8));
 
@@ -2367,6 +2382,20 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 <Maximize2 className="h-3.5 w-3.5 text-slate-400" />
                 전구간 설정 해제
               </button>
+              {onFitClipToSegment && (
+                <button
+                  type="button"
+                  disabled={segments.length === 0}
+                  onClick={() => {
+                    onFitClipToSegment(clip.id, sourceContextMenu.clickTime);
+                    setSourceContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-slate-800 disabled:opacity-40"
+                >
+                  <Link2 className="h-3.5 w-3.5 text-sky-400" />
+                  구간에 맞추기
+                </button>
+              )}
               <div className="my-1 border-t border-slate-800" />
               <button
                 type="button"
