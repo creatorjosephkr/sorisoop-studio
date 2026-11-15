@@ -1103,15 +1103,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
 
       {/* 영상 트랙 편집 툴바 (오디오 트랙 위) */}
       {(duration > 0 || videoClips.length > 0) && (
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-950/70 px-2.5 py-1.5 text-[11px]">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="flex items-center gap-1 font-semibold text-emerald-300">
+        <div className="mb-2 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto rounded-lg border border-slate-800/80 bg-slate-950/70 px-2 py-1.5 text-[11px]">
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="flex shrink-0 items-center gap-1 font-semibold text-emerald-300">
               <Film className="h-3.5 w-3.5" /> 영상 트랙 ({videoClips.length})
             </span>
             <button
               type="button"
               onClick={onAppendMedia}
-              className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-slate-200 hover:bg-slate-700"
+              className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-slate-200 hover:bg-slate-700"
               title="끝에 영상/사진 추가"
             >
               <Plus className="h-3 w-3 text-emerald-400" /> 추가
@@ -1119,7 +1119,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
             <button
               type="button"
               onClick={onInsertMediaAtCurrent}
-              className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-slate-200 hover:bg-slate-700"
+              className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-slate-200 hover:bg-slate-700"
               title="현재 재생헤드 위치에 삽입(Insert)"
             >
               <ArrowDownToLine className="h-3 w-3 text-cyan-400" /> Insert
@@ -1128,7 +1128,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               type="button"
               onClick={onSplitClip}
               disabled={videoClips.length === 0}
-              className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
+              className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
               title="현재 재생헤드 위치에서 선택/활성 클립 분할"
             >
               <Scissors className="h-3 w-3 text-amber-300" /> 분할
@@ -1137,7 +1137,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               type="button"
               onClick={onJoinClipGaps}
               disabled={videoClips.length < 2}
-              className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
+              className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-slate-200 hover:bg-slate-700 disabled:opacity-35"
               title="클립 사이 빈틈 이어 붙이기"
             >
               <Link2 className="h-3 w-3 text-indigo-300" /> 이어 붙이기
@@ -1152,7 +1152,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                 }
               }}
               disabled={!selectedClipId && (selectedClipIds?.length ?? 0) === 0}
-              className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-rose-300 hover:bg-rose-500/20 disabled:opacity-35"
+              className="flex shrink-0 items-center gap-1 rounded bg-slate-800 px-1.5 py-0.5 text-rose-300 hover:bg-rose-500/20 disabled:opacity-35"
               title="선택한 영상/사진 클립 삭제 (Delete / Backspace)"
             >
               <Trash2 className="h-3 w-3" />{' '}
@@ -1170,7 +1170,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
               durationSec: DEFAULT_TRANSITION_DURATION,
             };
             return (
-              <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-300">
+              <div className="flex shrink-0 items-center gap-1.5 text-[10px] text-slate-300">
                 <label className="flex items-center gap-1">
                   <span className="text-slate-400">투명도</span>
                   <input
@@ -1182,7 +1182,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                     onChange={(e) =>
                       onUpdateClip(selClip.id, { opacity: Number(e.target.value) })
                     }
-                    className="w-16 accent-emerald-400"
+                    className="w-12 accent-emerald-400"
                   />
                   <span className="w-7 font-mono">{Math.round(selClip.opacity * 100)}%</span>
                 </label>
@@ -1198,9 +1198,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                     onChange={(e) =>
                       onUpdateClip(selClip.id, { blur: Number(e.target.value) })
                     }
-                    className="w-16 accent-cyan-400"
+                    className="w-12 accent-cyan-400"
                   />
-                  <span className="w-8 font-mono">{selClip.blur ?? 0}px</span>
+                  <span className="w-7 font-mono">{selClip.blur ?? 0}px</span>
                 </label>
 
                 {selClip.mediaType === 'video' && (

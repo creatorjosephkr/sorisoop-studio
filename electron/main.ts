@@ -170,9 +170,9 @@ async function detectBestVideoEncoder(ffmpegPath: string): Promise<HardwareEncod
 function createWindow() {
   mainWindow = new BrowserWindow({
     title: '소리숲 뮤직비디오 스튜디오',
-    width: 1760,
+    width: 1860,
     height: 1020,
-    minWidth: 1120,
+    minWidth: 1240,
     minHeight: 740,
     backgroundColor: '#020617',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
