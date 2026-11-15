@@ -8,30 +8,28 @@ const rootDir = path.resolve(__dirname, '..');
 const ffmpegStaticDir = path.join(rootDir, 'node_modules', 'ffmpeg-static');
 const ffmpegCacheDir = path.join(rootDir, 'node_modules', '.cache', 'sorisoop-ffmpeg');
 
+const KOREAN_APP_NAME = '소리숲 뮤직비디오 스튜디오';
+const ASCII_APP_NAME = 'SoriSoop MV Studio';
+const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+
 const TARGETS = [
   {
     id: 'mac-arm64',
     platform: 'darwin',
     arch: 'arm64',
     binaryName: 'ffmpeg',
-    builderArgs: [
-      '--mac',
-      'dmg',
-      '--arm64',
-      '-c.mac.artifactName=SoriSoop_MV_Studio_v${version}-Mac-arm64.${ext}',
-    ],
+    macOutDir: 'mac-arm64',
+    dmgName: `SoriSoop_MV_Studio_v${pkg.version}-Mac-arm64.dmg`,
+    builderArgs: ['--mac', 'dir', '--arm64'],
   },
   {
     id: 'mac-intel',
     platform: 'darwin',
     arch: 'x64',
     binaryName: 'ffmpeg',
-    builderArgs: [
-      '--mac',
-      'dmg',
-      '--x64',
-      '-c.mac.artifactName=SoriSoop_MV_Studio_v${version}-Mac-intel.${ext}',
-    ],
+    macOutDir: 'mac',
+    dmgName: `SoriSoop_MV_Studio_v${pkg.version}-Mac-intel.dmg`,
+    builderArgs: ['--mac', 'dir', '--x64'],
   },
   {
     id: 'windows',
@@ -46,6 +44,35 @@ const TARGETS = [
     ],
   },
 ];
+
+function buildKoreanMacDmg(target) {
+  const releaseDir = path.join(rootDir, 'release');
+  const appOutDir = path.join(releaseDir, target.macOutDir);
+  const srcApp = path.join(appOutDir, `${ASCII_APP_NAME}.app`);
+  const stageDir = path.join(releaseDir, `.dmg-stage-${target.id}`);
+  const destApp = path.join(stageDir, `${KOREAN_APP_NAME}.app`);
+  const dmgPath = path.join(releaseDir, target.dmgName);
+
+  fs.rmSync(stageDir, { recursive: true, force: true });
+  fs.mkdirSync(stageDir, { recursive: true });
+  run('cp', ['-R', srcApp, destApp]);
+  fs.symlinkSync('/Applications', path.join(stageDir, 'Applications'));
+  fs.rmSync(dmgPath, { force: true });
+
+  console.log(`\n[dmg] Creating ${target.dmgName} with ${KOREAN_APP_NAME}.app...`);
+  run('hdiutil', [
+    'create',
+    '-volname',
+    KOREAN_APP_NAME,
+    '-srcfolder',
+    stageDir,
+    '-ov',
+    '-format',
+    'UDZO',
+    dmgPath,
+  ]);
+  fs.rmSync(stageDir, { recursive: true, force: true });
+}
 
 function run(cmd, args, extraEnv = {}) {
   const result = spawnSync(cmd, args, {
@@ -142,6 +169,9 @@ function main() {
       activateFfmpegBinary(target.platform, target.arch, target.binaryName);
       const args = builderCmd === npxCmd ? ['electron-builder', ...target.builderArgs] : target.builderArgs;
       run(builderCmd, args);
+      if (target.platform === 'darwin') {
+        buildKoreanMacDmg(target);
+      }
     });
   } finally {
     const hostBinaryName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
