@@ -348,7 +348,9 @@ export function App() {
     return null;
   });
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
   const [selectedTextLayerId, setSelectedTextLayerId] = useState<string | null>(null);
+  const [selectedTextLayerIds, setSelectedTextLayerIds] = useState<string[]>([]);
   const pendingMediaModeRef = useRef<'append' | 'insert'>('append');
   const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>(() => {
     const initVe = initialSettings.visualEffects;
@@ -895,15 +897,33 @@ export function App() {
       }
 
       if (e.code === 'Delete' || e.code === 'Backspace') {
-        if (selectedClipId) {
+        const clipTargets =
+          selectedClipIds.length > 0
+            ? selectedClipIds
+            : selectedClipId
+              ? [selectedClipId]
+              : [];
+        const textTargets =
+          selectedTextLayerIds.length > 0
+            ? selectedTextLayerIds
+            : selectedTextLayerId
+              ? [selectedTextLayerId]
+              : [];
+        if (clipTargets.length > 0 || textTargets.length > 0) {
           e.preventDefault();
-          setVideoClips((prev) => prev.filter((c) => c.id !== selectedClipId));
-          setSelectedClipId(null);
-          return;
-        }
-        if (selectedTextLayerId) {
-          e.preventDefault();
-          handleDeleteTextLayer(selectedTextLayerId);
+          pushUndoSnapshot();
+          if (clipTargets.length > 0) {
+            const clipSet = new Set(clipTargets);
+            setVideoClips((prev) => prev.filter((c) => !clipSet.has(c.id)), false);
+            setSelectedClipId(null);
+            setSelectedClipIds([]);
+          }
+          if (textTargets.length > 0) {
+            const textSet = new Set(textTargets);
+            setTextLayers((prev) => prev.filter((l) => !textSet.has(l.id)), false);
+            setSelectedTextLayerId(null);
+            setSelectedTextLayerIds([]);
+          }
           return;
         }
       }
@@ -964,10 +984,13 @@ export function App() {
     currentTime,
     handleSeek,
     handleTogglePlay,
+    pushUndoSnapshot,
     segments,
     selectedClipId,
+    selectedClipIds,
     selectedSegmentId,
     selectedTextLayerId,
+    selectedTextLayerIds,
   ]);
 
   useEffect(() => {
@@ -2122,9 +2145,39 @@ export function App() {
             videoClips={videoClips}
             appTheme={appTheme}
             selectedClipId={selectedClipId}
-            onSelectClip={(id) => {
+            selectedClipIds={selectedClipIds}
+            onSelectClip={(id, opts) => {
+              if (!id) {
+                setSelectedClipId(null);
+                setSelectedClipIds([]);
+                return;
+              }
+              if (opts?.range) {
+                const sorted = sortClips(videoClips);
+                const anchorId = selectedClipId ?? selectedClipIds[selectedClipIds.length - 1];
+                const aIdx = anchorId ? sorted.findIndex((c) => c.id === anchorId) : -1;
+                const bIdx = sorted.findIndex((c) => c.id === id);
+                if (aIdx !== -1 && bIdx !== -1) {
+                  const [lo, hi] = aIdx <= bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+                  const rangeIds = sorted.slice(lo, hi + 1).map((c) => c.id);
+                  setSelectedClipId(id);
+                  setSelectedClipIds((prev) => Array.from(new Set([...prev, ...rangeIds])));
+                  return;
+                }
+              }
+              if (opts?.toggle) {
+                setSelectedClipIds((prev) => {
+                  const exists = prev.includes(id);
+                  const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
+                  setSelectedClipId(exists ? (next[next.length - 1] ?? null) : id);
+                  return next;
+                });
+                return;
+              }
               setSelectedClipId(id);
-              if (id) setSelectedTextLayerId(null);
+              setSelectedClipIds([id]);
+              setSelectedTextLayerId(null);
+              setSelectedTextLayerIds([]);
             }}
             onSplitClip={() => {
               const target =
@@ -2139,6 +2192,20 @@ export function App() {
             onDeleteClip={(id) => {
               setVideoClips((prev) => prev.filter((c) => c.id !== id));
               if (selectedClipId === id) setSelectedClipId(null);
+              setSelectedClipIds((prev) => prev.filter((x) => x !== id));
+            }}
+            onDeleteSelectedClips={() => {
+              const targets =
+                selectedClipIds.length > 0
+                  ? selectedClipIds
+                  : selectedClipId
+                    ? [selectedClipId]
+                    : [];
+              if (targets.length === 0) return;
+              const targetSet = new Set(targets);
+              setVideoClips((prev) => prev.filter((c) => !targetSet.has(c.id)));
+              setSelectedClipId(null);
+              setSelectedClipIds([]);
             }}
             onJoinClipGaps={() => setVideoClips((prev) => joinVideoClipsGaps(prev))}
             onInsertMediaAtCurrent={() => handleOpenBackground('insert')}
@@ -2162,12 +2229,43 @@ export function App() {
             }
             textLayers={textLayers}
             selectedTextLayerId={selectedTextLayerId}
-            onSelectTextLayer={(id) => {
-              setSelectedTextLayerId(id);
-              if (id) {
-                setSelectedClipId(null);
-                setRightTab('text');
+            selectedTextLayerIds={selectedTextLayerIds}
+            onSelectTextLayer={(id, opts) => {
+              if (!id) {
+                setSelectedTextLayerId(null);
+                setSelectedTextLayerIds([]);
+                return;
               }
+              if (opts?.range) {
+                const ranged = textLayers.filter((l) => !l.alwaysVisible);
+                const anchorId =
+                  selectedTextLayerId ?? selectedTextLayerIds[selectedTextLayerIds.length - 1];
+                const aIdx = anchorId ? ranged.findIndex((l) => l.id === anchorId) : -1;
+                const bIdx = ranged.findIndex((l) => l.id === id);
+                if (aIdx !== -1 && bIdx !== -1) {
+                  const [lo, hi] = aIdx <= bIdx ? [aIdx, bIdx] : [bIdx, aIdx];
+                  const rangeIds = ranged.slice(lo, hi + 1).map((l) => l.id);
+                  setSelectedTextLayerId(id);
+                  setSelectedTextLayerIds((prev) => Array.from(new Set([...prev, ...rangeIds])));
+                  setRightTab('text');
+                  return;
+                }
+              }
+              if (opts?.toggle) {
+                setSelectedTextLayerIds((prev) => {
+                  const exists = prev.includes(id);
+                  const next = exists ? prev.filter((x) => x !== id) : [...prev, id];
+                  setSelectedTextLayerId(exists ? (next[next.length - 1] ?? null) : id);
+                  return next;
+                });
+                setRightTab('text');
+                return;
+              }
+              setSelectedTextLayerId(id);
+              setSelectedTextLayerIds([id]);
+              setSelectedClipId(null);
+              setSelectedClipIds([]);
+              setRightTab('text');
             }}
             onUpdateTextLayer={handleUpdateTextLayer}
             onDeleteTextLayer={handleDeleteTextLayer}

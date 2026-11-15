@@ -60,10 +60,12 @@ interface WaveformTimelineProps {
   onSelectSegment: (seg: LyricSegment) => void;
   videoClips: VideoClip[];
   selectedClipId: string | null;
-  onSelectClip: (id: string | null) => void;
+  selectedClipIds?: string[];
+  onSelectClip: (id: string | null, opts?: { toggle?: boolean; range?: boolean }) => void;
   onSplitClip: () => void;
   onSplitClipAt?: (id: string, splitTime: number) => void;
   onDeleteClip: (id: string) => void;
+  onDeleteSelectedClips?: () => void;
   onJoinClipGaps: () => void;
   onInsertMediaAtCurrent: () => void;
   onAppendMedia: () => void;
@@ -72,7 +74,8 @@ interface WaveformTimelineProps {
   onUpdateClip: (id: string, patch: Partial<VideoClip>, recordHistory?: boolean) => void;
   textLayers: TextLayer[];
   selectedTextLayerId: string | null;
-  onSelectTextLayer: (id: string | null) => void;
+  selectedTextLayerIds?: string[];
+  onSelectTextLayer: (id: string | null, opts?: { toggle?: boolean; range?: boolean }) => void;
   onUpdateTextLayer: (id: string, patch: Partial<TextLayer>, recordHistory?: boolean) => void;
   onDeleteTextLayer: (id: string) => void;
   onSplitTextLayer?: (id: string, splitTime: number) => void;
@@ -115,10 +118,12 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   onSelectSegment,
   videoClips,
   selectedClipId,
+  selectedClipIds,
   onSelectClip,
   onSplitClip,
   onSplitClipAt,
   onDeleteClip,
+  onDeleteSelectedClips,
   onJoinClipGaps,
   onInsertMediaAtCurrent,
   onAppendMedia,
@@ -127,6 +132,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   onUpdateClip,
   textLayers,
   selectedTextLayerId,
+  selectedTextLayerIds,
   onSelectTextLayer,
   onUpdateTextLayer,
   onDeleteTextLayer,
@@ -1059,12 +1065,21 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => selectedClipId && onDeleteClip(selectedClipId)}
-              disabled={!selectedClipId}
+              onClick={() => {
+                if (onDeleteSelectedClips) {
+                  onDeleteSelectedClips();
+                } else if (selectedClipId) {
+                  onDeleteClip(selectedClipId);
+                }
+              }}
+              disabled={!selectedClipId && (selectedClipIds?.length ?? 0) === 0}
               className="flex items-center gap-1 rounded bg-slate-800 px-2 py-0.5 text-rose-300 hover:bg-rose-500/20 disabled:opacity-35"
-              title="선택한 영상/사진 클립 삭제"
+              title="선택한 영상/사진 클립 삭제 (Delete / Backspace)"
             >
-              <Trash2 className="h-3 w-3" /> 삭제
+              <Trash2 className="h-3 w-3" />{' '}
+              {(selectedClipIds?.length ?? 0) > 1
+                ? `삭제 (${selectedClipIds!.length})`
+                : '삭제'}
             </button>
           </div>
 
@@ -1252,7 +1267,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                           ((layer.endTime - layer.startTime) / displayDuration) * 100
                         )
                       : 0;
-                  const isSelected = layer.id === selectedTextLayerId;
+                  const isSelected =
+                    (selectedTextLayerIds?.includes(layer.id) ?? false) ||
+                    layer.id === selectedTextLayerId;
                   const inTrans = layer.transitionIn;
                   const hasIn = inTrans && inTrans.type !== 'none';
                   const outTrans = layer.transitionOut;
@@ -1274,6 +1291,13 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                           onMouseDown={(e) => {
                             if (e.button !== 0) return;
                             e.stopPropagation();
+                            if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                              onSelectTextLayer(layer.id, {
+                                toggle: e.metaKey || e.ctrlKey,
+                                range: e.shiftKey,
+                              });
+                              return;
+                            }
                             onSelectTextLayer(layer.id);
                             onBeginDrag();
                             textDragRef.current = {
@@ -1429,7 +1453,9 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                     0.5,
                     ((clip.timelineEnd - clip.timelineStart) / displayDuration) * 100
                   );
-                  const isSelected = clip.id === selectedClipId;
+                  const isSelected =
+                    (selectedClipIds?.includes(clip.id) ?? false) ||
+                    clip.id === selectedClipId;
                   const trans = clip.transitionIn;
                   const hasTrans = trans && trans.type !== 'none';
                   const transWidthPct = hasTrans
@@ -1454,6 +1480,13 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                       onMouseDown={(e) => {
                         if (e.button !== 0) return;
                         e.stopPropagation();
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                          onSelectClip(clip.id, {
+                            toggle: e.metaKey || e.ctrlKey,
+                            range: e.shiftKey,
+                          });
+                          return;
+                        }
                         onSelectClip(clip.id);
                         onBeginDrag();
                         clipDragRef.current = {
