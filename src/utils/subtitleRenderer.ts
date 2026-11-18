@@ -1,12 +1,112 @@
 import { getBundledFontById } from '../fonts/fonts';
 import {
   BackgroundMedia,
+  HologramPalette,
   LyricSegment,
   SubtitleStylePreset,
   TextLayer,
   VideoClip,
   VisualEffectsConfig,
 } from '../types';
+
+interface HologramPaletteSpec {
+  hues: [number, number, number, number];
+  sat: number;
+  light: number;
+  bgHues: [number, number];
+}
+
+function getHologramPaletteSpec(palette?: HologramPalette): HologramPaletteSpec {
+  switch (palette) {
+    case 'ocean':
+      return { hues: [192, 210, 228, 172], sat: 88, light: 56, bgHues: [215, 198] };
+    case 'sunset':
+      return { hues: [342, 14, 34, 286], sat: 90, light: 60, bgHues: [275, 345] };
+    case 'cosmic':
+      return { hues: [262, 294, 328, 224], sat: 90, light: 60, bgHues: [255, 290] };
+    case 'emerald':
+      return { hues: [144, 168, 92, 50], sat: 84, light: 54, bgHues: [168, 138] };
+    case 'moonlight':
+      return { hues: [206, 224, 250, 190], sat: 76, light: 68, bgHues: [224, 240] };
+    case 'aurora':
+    default:
+      return { hues: [176, 198, 268, 315], sat: 86, light: 58, bgHues: [212, 272] };
+  }
+}
+
+function fillBackdropGradient(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  spec: HologramPaletteSpec,
+  topLight: number,
+  botLight: number,
+  alpha: number
+) {
+  const grad = ctx.createLinearGradient(0, 0, width * 0.25, height);
+  grad.addColorStop(0, `hsla(${spec.bgHues[0]}, ${Math.round(spec.sat * 0.65)}%, ${topLight}%, ${alpha})`);
+  grad.addColorStop(
+    0.55,
+    `hsla(${(spec.bgHues[0] + spec.bgHues[1]) * 0.5}, ${Math.round(spec.sat * 0.7)}%, ${Math.round(
+      (topLight + botLight) * 0.5
+    )}%, ${alpha})`
+  );
+  grad.addColorStop(1, `hsla(${spec.bgHues[1]}, ${Math.round(spec.sat * 0.6)}%, ${botLight}%, ${alpha})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function fillSoftOrb(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  hue: number,
+  sat: number,
+  light: number,
+  centerAlpha: number,
+  midHueOffset = 35
+) {
+  if (r <= 0.5) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `hsla(${hue}, ${sat}%, ${Math.min(92, light + 18)}%, ${centerAlpha})`);
+  g.addColorStop(0.45, `hsla(${(hue + midHueOffset) % 360}, ${sat}%, ${light}%, ${centerAlpha * 0.42})`);
+  g.addColorStop(1, `hsla(${(hue + midHueOffset) % 360}, ${sat}%, ${Math.max(18, light - 14)}%, 0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function fillBlurredSurface(
+  ctx: CanvasRenderingContext2D,
+  topPts: Array<{ x: number; y: number }>,
+  botPts: Array<{ x: number; y: number }>,
+  fillStyle: CanvasGradient | string,
+  blurPx: number
+) {
+  if (topPts.length < 2 || botPts.length < 2) return;
+  ctx.save();
+  if (blurPx > 0) ctx.filter = `blur(${blurPx}px)`;
+  ctx.beginPath();
+  ctx.moveTo(topPts[0].x, topPts[0].y);
+  for (let i = 1; i < topPts.length; i++) {
+    const prev = topPts[i - 1];
+    const cur = topPts[i];
+    ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2);
+  }
+  ctx.lineTo(topPts[topPts.length - 1].x, topPts[topPts.length - 1].y);
+  ctx.lineTo(botPts[botPts.length - 1].x, botPts[botPts.length - 1].y);
+  for (let i = botPts.length - 2; i >= 0; i--) {
+    const prev = botPts[i + 1];
+    const cur = botPts[i];
+    ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  ctx.restore();
+}
 
 const spectrumSmoothMap = new WeakMap<
   CanvasRenderingContext2D,
@@ -542,7 +642,7 @@ export function renderMusicVideoFrame({
 
   // 음악 반응형 비주얼 효과(홀로그램 3종)용 스무딩 오디오 빈 계산
   const rawHologramBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
-  const holoSmooth = Math.max(0, Math.min(0.94, visualEffects?.hologramSmoothing ?? 0.72));
+  const holoSmooth = Math.max(0, Math.min(0.94, visualEffects?.hologramSmoothing ?? 0.9));
   let holoEntry = spectrumSmoothMap.get(ctx);
   if (!holoEntry || holoEntry.hologramBins.length !== rawHologramBins.length) {
     holoEntry = {
@@ -576,35 +676,38 @@ export function renderMusicVideoFrame({
     bassEnergy = bassSum / bassCount;
   }
 
-  // 1-A. 여러 색상의 구름 같은 유기적 띠가 음악에 반응하며 변형되는 오로라 홀로그램 (은은한 배경용)
+  // 1-A1. 오로라 구름 띠 (유기적 면 채우기 오로라 홀로그램)
   if (!transparentBackground && visualEffects?.hologramEnabled) {
     ctx.save();
     const minDim = Math.min(width, height);
     const vol = Math.min(1, avgEnergy * 1.5);
     const bass = Math.min(1, bassEnergy * 1.6);
     const t = currentTime;
+    const spec = getHologramPaletteSpec(visualEffects.hologramPalette ?? 'aurora');
 
     ctx.globalCompositeOperation = 'screen';
     ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.hologramOpacity ?? 0.38));
 
-    // 다채로운 오로라/구름 띠 팔레트
+    fillBackdropGradient(ctx, width, height, spec, 10 + vol * 6, 16 + bass * 8, 0.55);
+
     const cloudBands = [
-      { yRatio: 0.34, thickness: 0.22, speed: 0.42, freq: 2.3, hueA: 185, hueB: 265, binOffset: 0 },
-      { yRatio: 0.52, thickness: 0.26, speed: -0.35, freq: 1.9, hueA: 280, hueB: 330, binOffset: 8 },
-      { yRatio: 0.64, thickness: 0.20, speed: 0.28, freq: 2.7, hueA: 155, hueB: 205, binOffset: 16 },
-      { yRatio: 0.44, thickness: 0.18, speed: -0.48, freq: 3.1, hueA: 315, hueB: 40, binOffset: 24 },
-      { yRatio: 0.50, thickness: 0.24, speed: 0.31, freq: 1.6, hueA: 215, hueB: 175, binOffset: 32 },
+      { yRatio: 0.32, thickness: 0.24, speed: 0.42, freq: 2.3, hueIdxA: 0, hueIdxB: 2, binOffset: 0 },
+      { yRatio: 0.50, thickness: 0.28, speed: -0.35, freq: 1.9, hueIdxA: 2, hueIdxB: 3, binOffset: 8 },
+      { yRatio: 0.66, thickness: 0.22, speed: 0.28, freq: 2.7, hueIdxA: 1, hueIdxB: 0, binOffset: 16 },
+      { yRatio: 0.43, thickness: 0.20, speed: -0.48, freq: 3.1, hueIdxA: 3, hueIdxB: 1, binOffset: 24 },
+      { yRatio: 0.54, thickness: 0.26, speed: 0.31, freq: 1.6, hueIdxA: 1, hueIdxB: 2, binOffset: 32 },
     ];
 
     const steps = 28;
+    const blurPx = Math.max(14, Math.round(30 * baseScale));
 
     for (let b = 0; b < cloudBands.length; b++) {
       const band = cloudBands[b];
       const baseCenterY = height * band.yRatio;
-      const baseHalfThick = minDim * band.thickness * (0.55 + bass * 0.65);
-      const hueShift = (t * 14 + b * 24) % 360;
-      const hue1 = (band.hueA + hueShift) % 360;
-      const hue2 = (band.hueB + hueShift) % 360;
+      const baseHalfThick = minDim * band.thickness * (0.58 + bass * 0.65);
+      const hueShift = (t * 8 + b * 12) % 360;
+      const hue1 = (spec.hues[band.hueIdxA] + hueShift) % 360;
+      const hue2 = (spec.hues[band.hueIdxB] + hueShift) % 360;
 
       const topPts: Array<{ x: number; y: number }> = [];
       const botPts: Array<{ x: number; y: number }> = [];
@@ -612,12 +715,10 @@ export function renderMusicVideoFrame({
       for (let i = 0; i <= steps; i++) {
         const u = i / steps;
         const x = -width * 0.06 + u * width * 1.12;
-
         const binIdx = (band.binOffset + i) % hologramBins.length;
         const binVal =
           spectrumBins && spectrumBins.length > 0 ? hologramBins[binIdx] / 255 : 0.12;
 
-        // 3개의 위상이 다른 파동으로 구름이 뭉게뭉게 형태를 바꾸는 느낌 생성
         const centerWave =
           Math.sin(u * Math.PI * band.freq + t * band.speed + b) *
             minDim *
@@ -626,7 +727,6 @@ export function renderMusicVideoFrame({
             minDim *
             (0.04 + binVal * 0.11);
 
-        // 구름 띠의 두께가 위치와 음악 에너지에 따라 부풀고 좁아짐
         const puff =
           0.55 +
           0.45 * Math.sin(u * Math.PI * 3.2 - t * (0.6 + b * 0.1) + b * 2) +
@@ -634,44 +734,20 @@ export function renderMusicVideoFrame({
 
         const localHalf = baseHalfThick * puff;
         const cy = baseCenterY + centerWave;
-
         topPts.push({ x, y: cy - localHalf });
         botPts.push({ x, y: cy + localHalf });
       }
 
-      ctx.save();
-      ctx.filter = `blur(${Math.max(12, Math.round(28 * baseScale))}px)`;
-      ctx.beginPath();
-      ctx.moveTo(topPts[0].x, topPts[0].y);
-      for (let i = 1; i < topPts.length; i++) {
-        const prev = topPts[i - 1];
-        const cur = topPts[i];
-        ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2);
-      }
-      const lastTop = topPts[topPts.length - 1];
-      ctx.lineTo(lastTop.x, lastTop.y);
-
-      const lastBot = botPts[botPts.length - 1];
-      ctx.lineTo(lastBot.x, lastBot.y);
-      for (let i = botPts.length - 2; i >= 0; i--) {
-        const prev = botPts[i + 1];
-        const cur = botPts[i];
-        ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + cur.x) / 2, (prev.y + cur.y) / 2);
-      }
-      ctx.closePath();
-
-      const alphaCenter = Math.min(0.28, 0.09 + vol * 0.14 + bass * 0.06);
+      const alphaCenter = Math.min(0.32, 0.11 + vol * 0.15 + bass * 0.06);
       const grad = ctx.createLinearGradient(0, 0, width, height);
-      grad.addColorStop(0, `hsla(${hue1}, 82%, 56%, ${alphaCenter * 0.45})`);
-      grad.addColorStop(0.5, `hsla(${(hue1 + hue2) / 2}, 86%, 58%, ${alphaCenter})`);
-      grad.addColorStop(1, `hsla(${hue2}, 82%, 54%, ${alphaCenter * 0.45})`);
+      grad.addColorStop(0, `hsla(${hue1}, ${spec.sat}%, ${spec.light}%, ${alphaCenter * 0.5})`);
+      grad.addColorStop(0.5, `hsla(${(hue1 + hue2) * 0.5}, ${spec.sat}%, ${spec.light + 4}%, ${alphaCenter})`);
+      grad.addColorStop(1, `hsla(${hue2}, ${spec.sat}%, ${spec.light - 2}%, ${alphaCenter * 0.5})`);
 
-      ctx.fillStyle = grad;
-      ctx.fill();
-      ctx.restore();
+      fillBlurredSurface(ctx, topPts, botPts, grad, blurPx);
     }
 
-    // 구름 사이를 떠다니는 부드러운 몽환적 빛망울(보케)
+    // 구름 사이를 떠다니는 부드러운 몽환적 빛망울(보케 면)
     const moteCount = 24;
     for (let m = 0; m < moteCount; m++) {
       const s1 = Math.sin(m * 19.31) * 43758.5453;
@@ -686,152 +762,353 @@ export function renderMusicVideoFrame({
       const mx = ((fx + Math.sin(t * 0.18 + m) * 0.08 + 1) % 1) * width;
       const my = ((fy + Math.cos(t * 0.15 + m * 1.4) * 0.08 + 1) % 1) * height;
       const mr = (18 + (m % 4) * 10 + bin * 36) * baseScale;
-      const mHue = (170 + m * 17 + t * 18) % 360;
+      const mHue = (spec.hues[m % spec.hues.length] + t * 10 + m * 6) % 360;
 
-      const mGrad = ctx.createRadialGradient(mx, my, 0, mx, my, mr);
-      mGrad.addColorStop(0, `hsla(${mHue}, 88%, 72%, ${0.06 + bin * 0.14})`);
-      mGrad.addColorStop(1, `hsla(${mHue}, 88%, 55%, 0)`);
-      ctx.fillStyle = mGrad;
-      ctx.beginPath();
-      ctx.arc(mx, my, mr, 0, Math.PI * 2);
-      ctx.fill();
+      fillSoftOrb(ctx, mx, my, mr, mHue, spec.sat, spec.light + 12, 0.08 + bin * 0.16, 20);
     }
 
     ctx.restore();
   }
 
-  // 1-A2. 칼라 홀로그램 프리즘 링 (크기 / 가변 선 두께 / 색상 / 음악 반응형 움직임)
-  if (!transparentBackground && visualEffects?.prismRingEnabled) {
+  // 1-A2. 물 속 심해 빛결 (수중 배경 + 볼류메트릭 빛기둥 + 유영하는 물결 면 + 물방울 보케)
+  if (!transparentBackground && visualEffects?.underwaterEnabled) {
     const rawBins = hologramBins;
-    let bass = 0;
-    let mid = 0;
-    let treble = 0;
-    const third = Math.max(1, Math.floor(rawBins.length / 3));
-    for (let i = 0; i < rawBins.length; i++) {
-      const v = rawBins[i] / 255;
-      if (i < third) bass += v;
-      else if (i < third * 2) mid += v;
-      else treble += v;
-    }
-    bass /= third;
-    mid /= third;
-    treble /= Math.max(1, rawBins.length - third * 2);
-
-    const ringScale = Math.max(0.5, Math.min(1.8, visualEffects.prismRingScale ?? 1.0));
-    const maxThickPx = Math.max(1, Math.min(300, visualEffects.prismRingThickness ?? 18));
-    const customColor = visualEffects.prismRingColor ?? 'auto';
-    const isAutoColor = customColor === 'auto';
-
-    // 음악 에너지에 따라 전체 중심이 살짝 유영하며 살아 움직이도록 오프셋 적용
-    const t = currentTime;
-    const cx = width / 2 + Math.sin(t * 1.1) * (4 + bass * 18) * baseScale;
-    const cy = height / 2 + Math.cos(t * 0.85) * (4 + mid * 16) * baseScale;
     const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.5);
+    const bass = Math.min(1, bassEnergy * 1.65);
+    const spec = getHologramPaletteSpec(visualEffects.underwaterPalette ?? 'ocean');
 
     ctx.save();
-    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.prismRingOpacity ?? 0.55));
     ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.underwaterOpacity ?? 0.55));
 
-    const ringCount = 3;
-    const points = 120;
-    for (let ring = 0; ring < ringCount; ring++) {
-      const baseR =
-        minDim * (0.18 + ring * 0.088) * ringScale +
-        bass * minDim * (0.065 + ring * 0.015) * ringScale;
-      const rot =
-        (t * (0.26 + ring * 0.16) + Math.sin(t * 1.4 + ring) * (0.15 + mid * 0.45)) *
-        (ring % 2 === 0 ? 1 : -1);
+    // 수중 심해 깊이감 배경 면
+    fillBackdropGradient(ctx, width, height, spec, 18 + vol * 9, 5 + bass * 4, 0.85);
 
-      const centerPts: Array<{ x: number; y: number; halfW: number }> = [];
-      for (let i = 0; i < points; i++) {
-        const angle = (i / points) * Math.PI * 2;
-        const binIdx = Math.floor((i / points) * rawBins.length);
-        const binVal = rawBins[binIdx] / 255;
+    // 수면 위에서 비스듬히 쏟아지는 볼류메트릭 빛기둥(God Rays) 면
+    const rayCount = 6;
+    ctx.save();
+    ctx.filter = `blur(${Math.max(12, Math.round(24 * baseScale))}px)`;
+    for (let r = 0; r < rayCount; r++) {
+      const binVal = rawBins.length > 0 ? rawBins[(r * 6) % rawBins.length] / 255 : 0.15;
+      const topX = width * (0.08 + r * 0.165) + Math.sin(t * 0.24 + r * 1.4) * width * 0.045;
+      const topW = minDim * (0.055 + (r % 2) * 0.025 + binVal * 0.045);
+      const botX = topX + width * 0.14 + Math.cos(t * 0.19 + r) * width * 0.035;
+      const botW = topW * 2.7;
+      const rayHue = (spec.hues[r % 2] + t * 5 + r * 7) % 360;
+      const rayAlpha = Math.min(0.28, 0.09 + binVal * 0.14 + bass * 0.06);
 
-        // 다중 파동 + 주파수 강도로 전체 선의 형태와 움직임이 음악에 맞춰 유기적으로 변형
-        const wave =
-          Math.sin(angle * (3 + ring) + rot * 2.4) * (8 + mid * 28) * ringScale * baseScale +
-          Math.cos(angle * (5 + ring * 2) - t * (1.8 + treble * 2.0)) *
-            (4 + treble * 16) *
-            ringScale *
-            baseScale +
-          binVal * (14 + bass * 32) * ringScale * baseScale;
-        const r = baseR + wave;
-        const px = cx + Math.cos(angle + rot) * r;
-        const py = cy + Math.sin(angle + rot) * r;
+      const rayGrad = ctx.createLinearGradient(topX, 0, botX, height * 0.88);
+      rayGrad.addColorStop(0, `hsla(${rayHue}, ${spec.sat}%, ${Math.min(88, spec.light + 20)}%, ${rayAlpha})`);
+      rayGrad.addColorStop(0.55, `hsla(${spec.hues[(r + 1) % 4]}, ${spec.sat}%, ${spec.light + 6}%, ${rayAlpha * 0.45})`);
+      rayGrad.addColorStop(1, `hsla(${spec.hues[2]}, ${spec.sat}%, ${spec.light}%, 0)`);
 
-        // 마디 없이 1px ~ maxThickPx 까지 음악에 따라 불규칙하게 두께 변화
-        const n1 = Math.sin(angle * 2 + t * 2.3 + ring * 1.7);
-        const n2 = Math.cos(angle * 5 - t * 3.7 + ring * 2.9);
-        const n3 = Math.sin(angle * 7 + t * 4.9 - ring * 1.1);
-        const irregular = Math.max(
-          0,
-          Math.min(1, 0.5 + (n1 * 0.45 + n2 * 0.35 + n3 * 0.2) * 0.55)
-        );
-        const rawMix = binVal * 0.55 + irregular * (0.25 + bass * 0.55 + treble * 0.25);
-        const intensity = Math.max(0, Math.min(1, Math.pow(rawMix, 1.55)));
-        const localWidth = (1 + (maxThickPx - 1) * intensity) * baseScale;
-        centerPts.push({ x: px, y: py, halfW: localWidth * 0.5 });
-      }
-
-      // 외곽/내곽 점 계산 (단일 닫힌 리본 폴리곤으로 마디 겹침 없이 매끄럽게 채우기)
-      const outerPts: Array<{ x: number; y: number }> = [];
-      const innerPts: Array<{ x: number; y: number }> = [];
-      for (let i = 0; i < points; i++) {
-        const prev = centerPts[(i - 1 + points) % points];
-        const cur = centerPts[i];
-        const next = centerPts[(i + 1) % points];
-        const tx = next.x - prev.x;
-        const ty = next.y - prev.y;
-        const len = Math.hypot(tx, ty) || 1;
-        const nx = -ty / len;
-        const ny = tx / len;
-        outerPts.push({ x: cur.x + nx * cur.halfW, y: cur.y + ny * cur.halfW });
-        innerPts.push({ x: cur.x - nx * cur.halfW, y: cur.y - ny * cur.halfW });
-      }
-
+      ctx.fillStyle = rayGrad;
       ctx.beginPath();
-      ctx.moveTo(outerPts[0].x, outerPts[0].y);
-      for (let i = 1; i < points; i++) {
-        ctx.lineTo(outerPts[i].x, outerPts[i].y);
-      }
+      ctx.moveTo(topX - topW, -height * 0.04);
+      ctx.lineTo(topX + topW, -height * 0.04);
+      ctx.lineTo(botX + botW, height * 0.92);
+      ctx.lineTo(botX - botW, height * 0.92);
       ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
 
-      // 안쪽 구멍을 반대로 돌아서 evenodd/nonzero 구멍 뚫린 단일 리본 패스 생성
-      ctx.moveTo(innerPts[0].x, innerPts[0].y);
-      for (let i = points - 1; i >= 1; i--) {
-        ctx.lineTo(innerPts[i].x, innerPts[i].y);
+    // 수중 물결 커튼 면 (4겹 부드러운 수압/광택 파동 면)
+    const waterLayers = [
+      { yRatio: 0.22, thick: 0.22, speed: 0.36, freq: 2.1, hIdx: 0, binOff: 0 },
+      { yRatio: 0.45, thick: 0.27, speed: -0.28, freq: 1.7, hIdx: 1, binOff: 10 },
+      { yRatio: 0.68, thick: 0.24, speed: 0.22, freq: 2.5, hIdx: 3, binOff: 20 },
+      { yRatio: 0.84, thick: 0.22, speed: -0.19, freq: 1.9, hIdx: 2, binOff: 30 },
+    ];
+    const steps = 28;
+    const waterBlur = Math.max(14, Math.round(28 * baseScale));
+    for (let l = 0; l < waterLayers.length; l++) {
+      const wl = waterLayers[l];
+      const topPts: Array<{ x: number; y: number }> = [];
+      const botPts: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = -width * 0.05 + u * width * 1.1;
+        const binVal = rawBins.length > 0 ? rawBins[(wl.binOff + i) % rawBins.length] / 255 : 0.14;
+        const swell =
+          Math.sin(u * Math.PI * wl.freq + t * wl.speed + l * 1.3) * minDim * (0.045 + vol * 0.085) +
+          Math.cos(u * Math.PI * (wl.freq * 1.6) - t * wl.speed * 1.2) * minDim * (0.025 + binVal * 0.055);
+        const cy = height * wl.yRatio + swell;
+        const half = minDim * wl.thick * (0.55 + binVal * 0.65 + bass * 0.3);
+        topPts.push({ x, y: cy - half });
+        botPts.push({ x, y: cy + half });
       }
-      ctx.closePath();
+      const wHueA = (spec.hues[wl.hIdx] + t * 6) % 360;
+      const wHueB = (spec.hues[(wl.hIdx + 1) % 4] + t * 6) % 360;
+      const wAlpha = Math.min(0.24, 0.08 + vol * 0.11 + bass * 0.05);
+      const wGrad = ctx.createLinearGradient(0, height * wl.yRatio - minDim * 0.2, width, height * wl.yRatio + minDim * 0.2);
+      wGrad.addColorStop(0, `hsla(${wHueA}, ${spec.sat}%, ${spec.light}%, ${wAlpha * 0.5})`);
+      wGrad.addColorStop(0.5, `hsla(${wHueB}, ${spec.sat}%, ${spec.light + 6}%, ${wAlpha})`);
+      wGrad.addColorStop(1, `hsla(${wHueA}, ${spec.sat}%, ${spec.light - 4}%, ${wAlpha * 0.5})`);
+      fillBlurredSurface(ctx, topPts, botPts, wGrad, waterBlur);
+    }
 
-      const hueA = (t * 32 + ring * 95) % 360;
-      const hueB = (hueA + 150) % 360;
-      if (isAutoColor) {
-        const grad = ctx.createLinearGradient(cx - baseR, cy - baseR, cx + baseR, cy + baseR);
-        grad.addColorStop(0, `hsla(${hueA}, 92%, 68%, 0.9)`);
-        grad.addColorStop(0.5, `hsla(${(hueA + 75) % 360}, 95%, 74%, 0.95)`);
-        grad.addColorStop(1, `hsla(${hueB}, 92%, 66%, 0.9)`);
-        ctx.fillStyle = grad;
-        ctx.shadowColor = `hsla(${hueA}, 95%, 65%, 0.65)`;
-      } else {
-        ctx.fillStyle = customColor;
-        ctx.shadowColor = customColor;
-      }
-      ctx.shadowBlur = (10 + treble * 18) * baseScale;
-      ctx.fill('evenodd');
+    // 수중 물방울 보케 면 (선 없이 부드럽게 떠오르는 빛방울)
+    const bubbleCount = 24;
+    for (let i = 0; i < bubbleCount; i++) {
+      const s1 = Math.sin(i * 29.71) * 43758.5453;
+      const s2 = Math.cos(i * 53.19) * 24634.6345;
+      const fx = s1 - Math.floor(s1);
+      const fy = s2 - Math.floor(s2);
+      const binVal = rawBins.length > 0 ? rawBins[i % rawBins.length] / 255 : 0.12;
+      const riseSpeed = 0.028 + (i % 5) * 0.008;
+      const bx = ((fx + Math.sin(t * 0.45 + i * 1.3) * 0.035 + 1) % 1) * width;
+      const by = ((fy - t * riseSpeed + 100) % 1) * height;
+      const br = (10 + (i % 4) * 7 + binVal * 26) * baseScale;
+      const bHue = (spec.hues[i % spec.hues.length] + t * 8) % 360;
+      fillSoftOrb(ctx, bx, by, br, bHue, spec.sat, spec.light + 16, 0.12 + binVal * 0.24, 18);
     }
 
     ctx.restore();
   }
 
-  // 1-A3. 칼라 홀로그램 스타더스트 입자 (음악 반응형)
+  // 1-A3. 우주 성운 네뷸라 (성운 구름 면 + 은하 코어 광채 + 성단 보케)
+  if (!transparentBackground && visualEffects?.nebulaEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.55);
+    const bass = Math.min(1, bassEnergy * 1.7);
+    const spec = getHologramPaletteSpec(visualEffects.nebulaPalette ?? 'cosmic');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.nebulaOpacity ?? 0.6));
+
+    // 깊은 우주 공간 그라데이션 면
+    fillBackdropGradient(ctx, width, height, spec, 7 + bass * 4, 12 + vol * 6, 0.9);
+
+    // 6개의 대형 성운 가스 구름 면 (회전 & 음악 반응형 팽창)
+    const nebulaClouds = [
+      { cx: 0.28, cy: 0.36, rx: 0.46, ry: 0.26, rot: 0.35, hIdx: 0, binOff: 0 },
+      { cx: 0.68, cy: 0.58, rx: 0.48, ry: 0.28, rot: -0.42, hIdx: 1, binOff: 8 },
+      { cx: 0.50, cy: 0.48, rx: 0.52, ry: 0.24, rot: 0.18, hIdx: 2, binOff: 16 },
+      { cx: 0.22, cy: 0.72, rx: 0.38, ry: 0.24, rot: -0.25, hIdx: 3, binOff: 24 },
+      { cx: 0.76, cy: 0.26, rx: 0.40, ry: 0.22, rot: 0.52, hIdx: 0, binOff: 32 },
+      { cx: 0.52, cy: 0.50, rx: 0.34, ry: 0.30, rot: -0.15, hIdx: 1, binOff: 40 },
+    ];
+
+    ctx.save();
+    ctx.filter = `blur(${Math.max(18, Math.round(36 * baseScale))}px)`;
+    for (let c = 0; c < nebulaClouds.length; c++) {
+      const nc = nebulaClouds[c];
+      const binVal = rawBins.length > 0 ? rawBins[nc.binOff % rawBins.length] / 255 : 0.15;
+      const cx = width * (nc.cx + Math.sin(t * 0.11 + c * 1.4) * 0.045);
+      const cy = height * (nc.cy + Math.cos(t * 0.09 + c * 1.9) * 0.045);
+      const rx = minDim * nc.rx * (0.88 + bass * 0.28 + binVal * 0.24);
+      const ry = minDim * nc.ry * (0.86 + vol * 0.26 + binVal * 0.22);
+      const angle = nc.rot + Math.sin(t * 0.08 + c) * 0.14;
+      const hue = (spec.hues[nc.hIdx] + t * 7 + c * 8) % 360;
+      const hue2 = (spec.hues[(nc.hIdx + 1) % 4] + t * 7) % 360;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.scale(1, ry / Math.max(1, rx));
+      const g = ctx.createRadialGradient(0, 0, rx * 0.05, 0, 0, rx);
+      g.addColorStop(0, `hsla(${hue2}, ${spec.sat}%, ${Math.min(82, spec.light + 14)}%, ${0.22 + binVal * 0.24})`);
+      g.addColorStop(0.45, `hsla(${hue}, ${spec.sat}%, ${spec.light}%, ${0.14 + vol * 0.15})`);
+      g.addColorStop(1, `hsla(${hue}, ${spec.sat}%, ${Math.max(20, spec.light - 16)}%, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, rx, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 은하 중심 코어 성운 발광 면
+    const coreX = width * (0.5 + Math.sin(t * 0.14) * 0.04);
+    const coreY = height * (0.48 + Math.cos(t * 0.12) * 0.04);
+    fillSoftOrb(
+      ctx,
+      coreX,
+      coreY,
+      minDim * (0.34 + bass * 0.14),
+      (spec.hues[2] + t * 9) % 360,
+      spec.sat,
+      spec.light + 12,
+      0.24 + bass * 0.26,
+      45
+    );
+
+    // 성운 속 은은한 성단 보케 빛무리 (면 전용)
+    const starClusterCount = 34;
+    for (let s = 0; s < starClusterCount; s++) {
+      const s1 = Math.sin(s * 37.13) * 43758.5453;
+      const s2 = Math.cos(s * 83.41) * 24634.6345;
+      const fx = s1 - Math.floor(s1);
+      const fy = s2 - Math.floor(s2);
+      const binVal = rawBins.length > 0 ? rawBins[s % rawBins.length] / 255 : 0.12;
+      const sx = ((fx + Math.sin(t * 0.06 + s) * 0.018 + 1) % 1) * width;
+      const sy = ((fy + Math.cos(t * 0.05 + s * 1.2) * 0.018 + 1) % 1) * height;
+      const sr = (4 + (s % 5) * 3.5 + binVal * 15) * baseScale;
+      const sHue = (spec.hues[s % 4] + s * 9 + t * 12) % 360;
+      fillSoftOrb(ctx, sx, sy, sr, sHue, spec.sat, spec.light + 22, 0.25 + binVal * 0.45, 25);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A4. 하늘 구름 스카이 클라우드 (대기 그라데이션 + 태양/달 후광 + 입체 뭉게구름 볼륨 면)
+  if (!transparentBackground && visualEffects?.skyCloudEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.5);
+    const bass = Math.min(1, bassEnergy * 1.65);
+    const spec = getHologramPaletteSpec(visualEffects.skyCloudPalette ?? 'sunset');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.skyCloudOpacity ?? 0.6));
+
+    // 대기 하늘 그라데이션 면
+    fillBackdropGradient(ctx, width, height, spec, 16 + vol * 8, 22 + bass * 8, 0.82);
+
+    // 태양 / 달빛 대기 산란 후광 면
+    const haloX = width * (0.5 + Math.sin(t * 0.08) * 0.06);
+    const haloY = height * (0.34 + Math.cos(t * 0.07) * 0.04);
+    fillSoftOrb(
+      ctx,
+      haloX,
+      haloY,
+      minDim * (0.38 + bass * 0.14),
+      spec.hues[2],
+      spec.sat,
+      spec.light + 16,
+      0.24 + bass * 0.22,
+      -28
+    );
+
+    // 4개 고도 층의 흘러가는 입체 구름 띠 면
+    const strata = [
+      { yRatio: 0.22, thick: 0.18, speed: 0.18, hIdx: 0, binOff: 0 },
+      { yRatio: 0.44, thick: 0.24, speed: -0.14, hIdx: 1, binOff: 12 },
+      { yRatio: 0.66, thick: 0.26, speed: 0.12, hIdx: 2, binOff: 24 },
+      { yRatio: 0.84, thick: 0.22, speed: -0.10, hIdx: 3, binOff: 36 },
+    ];
+    const steps = 28;
+    const cloudBlur = Math.max(16, Math.round(30 * baseScale));
+    for (let s = 0; s < strata.length; s++) {
+      const st = strata[s];
+      const topPts: Array<{ x: number; y: number }> = [];
+      const botPts: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = -width * 0.06 + u * width * 1.12;
+        const binVal = rawBins.length > 0 ? rawBins[(st.binOff + i) % rawBins.length] / 255 : 0.14;
+        const billow =
+          Math.sin(u * Math.PI * 2.8 + t * st.speed + s * 1.7) * minDim * (0.045 + vol * 0.065) +
+          Math.cos(u * Math.PI * 5.2 - t * st.speed * 1.4 + s) * minDim * (0.02 + binVal * 0.045);
+        const cy = height * st.yRatio + billow;
+        const puffTop =
+          minDim * st.thick * (0.48 + 0.42 * Math.abs(Math.sin(u * Math.PI * 3.4 + t * st.speed * 1.6)) + binVal * 0.55);
+        const puffBot = minDim * st.thick * (0.35 + bass * 0.3);
+        topPts.push({ x, y: cy - puffTop });
+        botPts.push({ x, y: cy + puffBot });
+      }
+      const cHueA = (spec.hues[st.hIdx] + t * 5) % 360;
+      const cHueB = (spec.hues[(st.hIdx + 1) % 4] + t * 5) % 360;
+      const cAlpha = Math.min(0.32, 0.12 + vol * 0.12 + bass * 0.08);
+      const grad = ctx.createLinearGradient(0, height * st.yRatio - minDim * 0.18, 0, height * st.yRatio + minDim * 0.18);
+      grad.addColorStop(0, `hsla(${cHueB}, ${spec.sat}%, ${Math.min(88, spec.light + 18)}%, ${cAlpha})`);
+      grad.addColorStop(0.55, `hsla(${cHueA}, ${spec.sat}%, ${spec.light + 4}%, ${cAlpha * 0.82})`);
+      grad.addColorStop(1, `hsla(${cHueA}, ${spec.sat}%, ${Math.max(24, spec.light - 12)}%, ${cAlpha * 0.25})`);
+      fillBlurredSurface(ctx, topPts, botPts, grad, cloudBlur);
+    }
+
+    // 구름 속 내부 산란광(음악에 맞춰 구름 덩어리가 안에서 환하게 호흡)
+    const puffCount = 16;
+    for (let p = 0; p < puffCount; p++) {
+      const s1 = Math.sin(p * 41.27) * 43758.5453;
+      const fx = s1 - Math.floor(s1);
+      const binVal = rawBins.length > 0 ? rawBins[(p * 3) % rawBins.length] / 255 : 0.15;
+      const drift = (p % 2 === 0 ? 1 : -1) * t * (0.012 + (p % 3) * 0.004);
+      const px = ((fx + drift + 100) % 1) * width;
+      const py = height * (0.18 + (p % 4) * 0.21 + Math.sin(t * 0.25 + p) * 0.03);
+      const pr = minDim * (0.13 + (p % 3) * 0.045 + binVal * 0.09 + bass * 0.05);
+      const pHue = (spec.hues[p % 4] + t * 6) % 360;
+      fillSoftOrb(ctx, px, py, pr, pHue, Math.max(45, spec.sat - 10), Math.min(88, spec.light + 18), 0.12 + binVal * 0.22, 22);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A5. 몽환 벨벳 플라즈마 (화면 전체를 유체처럼 채우는 유기적 그라데이션 면)
+  if (!transparentBackground && visualEffects?.plasmaEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.5);
+    const bass = Math.min(1, bassEnergy * 1.7);
+    const spec = getHologramPaletteSpec(visualEffects.plasmaPalette ?? 'aurora');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.plasmaOpacity ?? 0.55));
+
+    // 벨벳 플라즈마 바탕 면
+    fillBackdropGradient(ctx, width, height, spec, 10 + vol * 6, 14 + bass * 8, 0.78);
+
+    // 화면 전체를 부드럽게 교차하며 채우는 7개의 대형 유체 플라즈마 블롭 면
+    const blobCount = 7;
+    for (let b = 0; b < blobCount; b++) {
+      const binVal = rawBins.length > 0 ? rawBins[(b * 7) % rawBins.length] / 255 : 0.16;
+      const bx =
+        width *
+        (0.5 +
+          Math.sin(t * (0.21 + (b % 3) * 0.06) + b * 1.35) * 0.34 +
+          Math.cos(t * 0.13 + b * 2.1) * 0.12);
+      const by =
+        height *
+        (0.5 +
+          Math.cos(t * (0.18 + (b % 4) * 0.05) + b * 1.65) * 0.34 +
+          Math.sin(t * 0.11 + b * 1.9) * 0.12);
+      const br = minDim * (0.36 + (b % 3) * 0.09 + bass * 0.16 + binVal * 0.18);
+      const hue = (spec.hues[b % 4] + t * 14 + b * 18) % 360;
+      fillSoftOrb(ctx, bx, by, br, hue, spec.sat, spec.light + 6, 0.22 + binVal * 0.24, 42);
+    }
+
+    // 2겹의 넓은 블러 벨벳 베일 면으로 색상 융합 강화
+    const veilBlur = Math.max(20, Math.round(40 * baseScale));
+    for (let v = 0; v < 2; v++) {
+      const steps = 20;
+      const topPts: Array<{ x: number; y: number }> = [];
+      const botPts: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = -width * 0.05 + u * width * 1.1;
+        const binVal = rawBins.length > 0 ? rawBins[(i * 2 + v * 15) % rawBins.length] / 255 : 0.14;
+        const wave = Math.sin(u * Math.PI * (1.8 + v * 0.7) + t * (v === 0 ? 0.32 : -0.26) + v) * height * (0.14 + vol * 0.16);
+        const cy = height * (0.38 + v * 0.24) + wave;
+        const half = minDim * (0.24 + binVal * 0.18 + bass * 0.12);
+        topPts.push({ x, y: cy - half });
+        botPts.push({ x, y: cy + half });
+      }
+      const vh1 = (spec.hues[v * 2] + t * 12) % 360;
+      const vh2 = (spec.hues[(v * 2 + 1) % 4] + t * 12) % 360;
+      const grad = ctx.createLinearGradient(0, 0, width, height);
+      grad.addColorStop(0, `hsla(${vh1}, ${spec.sat}%, ${spec.light}%, ${0.12 + vol * 0.12})`);
+      grad.addColorStop(1, `hsla(${vh2}, ${spec.sat}%, ${spec.light + 6}%, ${0.14 + bass * 0.12})`);
+      fillBlurredSurface(ctx, topPts, botPts, grad, veilBlur);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A6. 스타더스트 보케 입자 (선 없이 부드러운 원형 빛망울 면)
   if (!transparentBackground && visualEffects?.prismParticlesEnabled) {
     const rawBins = hologramBins;
-    let energy = 0;
-    for (let i = 0; i < rawBins.length; i++) energy += rawBins[i] / 255;
-    energy /= rawBins.length;
-
     const t = currentTime;
+    const spec = getHologramPaletteSpec(visualEffects.prismParticlesPalette ?? 'aurora');
     const particleCount = 42;
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.prismParticlesOpacity ?? 0.6));
@@ -844,7 +1121,6 @@ export function renderMusicVideoFrame({
       const fy = s2 - Math.floor(s2);
       const binVal = rawBins[i % rawBins.length] / 255;
 
-      // 공기 중에 먼지가 가볍게 떠다니는 다방향 부유 운동 (한 방향 낙하 제거)
       const driftX =
         Math.sin(t * (0.22 + (i % 5) * 0.05) + i * 1.7) * 0.045 +
         Math.cos(t * (0.13 + (i % 3) * 0.04) + i * 0.9) * 0.025;
@@ -854,32 +1130,9 @@ export function renderMusicVideoFrame({
       const px = ((fx + driftX + 1) % 1) * width;
       const py = ((fy + driftY + 1) % 1) * height;
 
-      const size = (2.2 + (i % 4) * 1.4 + binVal * 6.5) * baseScale;
-      const hue = (t * 40 + i * 23) % 360;
-
-      const glowR = size * 3.4;
-      const pGrad = ctx.createRadialGradient(px, py, 0, px, py, glowR);
-      pGrad.addColorStop(0, `hsla(${hue}, 96%, 82%, ${0.45 + binVal * 0.5})`);
-      pGrad.addColorStop(0.4, `hsla(${(hue + 45) % 360}, 92%, 68%, ${0.22 + binVal * 0.35})`);
-      pGrad.addColorStop(1, `hsla(${hue}, 90%, 60%, 0)`);
-
-      ctx.fillStyle = pGrad;
-      ctx.beginPath();
-      ctx.arc(px, py, glowR, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 다이아몬드 형태의 홀로그램 플레어 코어
-      if (binVal > 0.32 || i % 3 === 0) {
-        const starLen = size * (1.8 + binVal * 1.6);
-        ctx.strokeStyle = `hsla(${(hue + 25) % 360}, 100%, 88%, ${0.35 + binVal * 0.55})`;
-        ctx.lineWidth = 1.1 * baseScale;
-        ctx.beginPath();
-        ctx.moveTo(px - starLen, py);
-        ctx.lineTo(px + starLen, py);
-        ctx.moveTo(px, py - starLen);
-        ctx.lineTo(px, py + starLen);
-        ctx.stroke();
-      }
+      const size = (2.6 + (i % 4) * 1.6 + binVal * 7.5) * baseScale;
+      const hue = (spec.hues[i % spec.hues.length] + t * 16 + i * 7) % 360;
+      fillSoftOrb(ctx, px, py, size * 3.6, hue, spec.sat, spec.light + 20, 0.38 + binVal * 0.48, 30);
     }
 
     ctx.restore();
@@ -889,7 +1142,7 @@ export function renderMusicVideoFrame({
   if (!transparentBackground && visualEffects?.spectrumEnabled) {
     const rawBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
     const band = visualEffects.spectrumBand ?? 'all';
-    const heightRatio = Math.max(0.06, Math.min(0.45, visualEffects.spectrumHeight ?? 0.18));
+    const heightRatio = Math.max(0.06, Math.min(0.85, visualEffects.spectrumHeight ?? 0.18));
     const widthRatio = Math.max(0.25, Math.min(1, visualEffects.spectrumWidth ?? 0.72));
     const customColor = visualEffects.spectrumColor ?? 'auto';
     const thickness = Math.max(0.4, Math.min(2.4, visualEffects.spectrumThickness ?? 1.0));
@@ -922,10 +1175,14 @@ export function renderMusicVideoFrame({
       };
       spectrumSmoothMap.set(ctx, smoothEntry);
     }
-    const keep = smoothing;
-    const take = 1 - keep;
+    // 비대칭 스무딩: 상승(Attack)은 빠르게 반응해 최대 피크 높이를 유지하고, 하강(Release)만 부드럽게 감쇠
+    const releaseKeep = smoothing;
+    const attackKeep = smoothing * 0.25;
     for (let i = 0; i < rawBins.length; i++) {
-      smoothEntry.bins[i] = smoothEntry.bins[i] * keep + rawBins[i] * take;
+      const prev = smoothEntry.bins[i];
+      const target = rawBins[i];
+      const keep = target > prev ? attackKeep : releaseKeep;
+      smoothEntry.bins[i] = prev * keep + target * (1 - keep);
     }
 
     const bins = smoothEntry.bins.subarray(bandStart, bandStart + bandLen);
@@ -935,6 +1192,14 @@ export function renderMusicVideoFrame({
     const specPosYRatio = Math.max(0.08, Math.min(0.92, visualEffects.spectrumPosY ?? 0.5));
     const centerY = height * specPosYRatio;
     const maxAmp = height * heightRatio;
+    // 높이 배율을 키워도 낮은 음량(최저값) 구간의 높이는 거의 커지지 않고 최대 피크 높이만 확장되도록 비선형 매핑
+    const baseRefAmp = Math.min(maxAmp, height * 0.14);
+    const extraAmp = Math.max(0, maxAmp - baseRefAmp);
+    const scaleSpectrumAmp = (norm: number, scale = 1): number => {
+      const clamped = Math.max(0, Math.min(1, norm));
+      const peakRatio = Math.pow(Math.max(0, (clamped - 0.18) / 0.82), 1.25);
+      return (clamped * baseRefAmp + peakRatio * extraAmp) * scale;
+    };
 
     ctx.save();
     ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.spectrumOpacity));
@@ -967,7 +1232,7 @@ export function renderMusicVideoFrame({
         for (let i = 0; i < binCount; i++) {
           const norm = bins[i] / 255;
           const x = startX + i * lineStep;
-          const y = centerY - Math.max(2 * baseScale, norm * maxAmp);
+          const y = centerY - Math.max(2 * baseScale, scaleSpectrumAmp(norm));
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -977,7 +1242,7 @@ export function renderMusicVideoFrame({
         for (let i = 0; i < binCount; i++) {
           const norm = bins[i] / 255;
           const x = startX + i * lineStep;
-          const y = centerY + Math.max(2 * baseScale, norm * maxAmp);
+          const y = centerY + Math.max(2 * baseScale, scaleSpectrumAmp(norm));
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         }
@@ -985,7 +1250,7 @@ export function renderMusicVideoFrame({
       } else {
         for (let i = 0; i < binCount; i++) {
           const norm = bins[i] / 255;
-          const h = Math.max(4 * baseScale, norm * maxAmp);
+          const h = Math.max(4 * baseScale, scaleSpectrumAmp(norm));
           const x = startX + i * slotW + (slotW - barW) / 2;
           if (shape === 'dots') {
             const r = Math.max(2 * baseScale, barW * 0.48);
@@ -994,8 +1259,8 @@ export function renderMusicVideoFrame({
             ctx.arc(x + barW / 2, centerY + h, r, 0, Math.PI * 2);
             ctx.fill();
           } else if (shape === 'bottom') {
-            const baseY = centerY + maxAmp * 0.65;
-            const barH = Math.max(4 * baseScale, norm * maxAmp * 1.45);
+            const baseY = centerY + baseRefAmp * 0.75;
+            const barH = Math.max(4 * baseScale, scaleSpectrumAmp(norm, 1.45));
             ctx.beginPath();
             ctx.roundRect(x, baseY - barH, barW, barH, barW / 2);
             ctx.fill();
@@ -1020,12 +1285,14 @@ export function renderMusicVideoFrame({
       bandEnergy /= Math.max(1, binCount);
       const bandGain = band === 'all' ? 1 : Math.min(1.6, 0.35 + bandEnergy * 2.2);
 
-      const sampleKeep = Math.min(0.85, smoothing * 0.85);
-      const sampleTake = 1 - sampleKeep;
+      const sampleReleaseKeep = Math.min(0.85, smoothing * 0.85);
+      const sampleAttackKeep = sampleReleaseKeep * 0.25;
       if (rawSamples) {
         for (let i = 0; i < pointCount; i++) {
-          smoothEntry.samples[i] =
-            smoothEntry.samples[i] * sampleKeep + rawSamples[i] * bandGain * sampleTake;
+          const prev = smoothEntry.samples[i];
+          const target = rawSamples[i] * bandGain;
+          const keep = Math.abs(target) > Math.abs(prev) ? sampleAttackKeep : sampleReleaseKeep;
+          smoothEntry.samples[i] = prev * keep + target * (1 - keep);
         }
       }
 
@@ -1071,10 +1338,11 @@ export function renderMusicVideoFrame({
       const getSampleY = (idx: number): number => {
         if (rawSamples) {
           const val = Math.max(-1, Math.min(1, smoothEntry!.samples[idx] * 2.6));
-          return centerY + val * analogMaxAmp;
+          const sign = val >= 0 ? 1 : -1;
+          return centerY + sign * scaleSpectrumAmp(Math.abs(val), 1.65);
         }
         const norm = bins[idx % binCount] / 255;
-        return centerY + (idx % 2 === 0 ? 1 : -1) * norm * analogMaxAmp * 0.75;
+        return centerY + (idx % 2 === 0 ? 1 : -1) * scaleSpectrumAmp(norm, 1.65 * 0.75);
       };
 
       if (shape === 'dots') {

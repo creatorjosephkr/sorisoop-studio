@@ -42,7 +42,14 @@ export const SponsorModal: React.FC<SponsorModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div
-      onClick={onClose}
+      onMouseDown={(e) => {
+        e.currentTarget.dataset.backdropDown = e.target === e.currentTarget ? '1' : '0';
+      }}
+      onClick={(e) => {
+        const wasDown = e.currentTarget.dataset.backdropDown === '1';
+        e.currentTarget.dataset.backdropDown = '0';
+        if (wasDown && e.target === e.currentTarget) onClose();
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
     >
       <div

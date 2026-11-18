@@ -407,3 +407,42 @@ export function fitVideoClipToSegment(
 
   return sortClips([...adjustedOthers, nextClip]);
 }
+
+/**
+ * 영상 클립의 뒤(우) 경계를 드래그하여 길이를 늘이거나 줄이면서 재생 속도를 함께 조절합니다.
+ */
+export function stretchVideoClipEnd(
+  clips: VideoClip[],
+  clipId: string,
+  newEnd: number,
+  origEnd: number,
+  origRate: number
+): VideoClip[] {
+  const sorted = sortClips(clips);
+  const idx = sorted.findIndex((c) => c.id === clipId);
+  if (idx === -1) return clips;
+
+  const cur = { ...sorted[idx] };
+  if (cur.mediaType !== 'video') {
+    return trimVideoClipEdge(clips, clipId, 'end', newEnd);
+  }
+
+  const safeOrigRate = Math.max(0.25, Math.min(4, origRate || 1));
+  const origDur = Math.max(MIN_CLIP_DURATION, origEnd - cur.timelineStart);
+  const sourceSpan = origDur * safeOrigRate;
+
+  const nextStart = idx < sorted.length - 1 ? sorted[idx + 1].timelineStart : Infinity;
+  const minDur = Math.max(MIN_CLIP_DURATION, sourceSpan / 4);
+  const maxDur = sourceSpan / 0.25;
+  const minAllowed = cur.timelineStart + minDur;
+  const maxAllowed = Math.max(minAllowed, Math.min(nextStart, cur.timelineStart + maxDur));
+
+  const clampedEnd = Number(Math.max(minAllowed, Math.min(maxAllowed, newEnd)).toFixed(2));
+  const newDur = Math.max(MIN_CLIP_DURATION, clampedEnd - cur.timelineStart);
+  const newRate = Number(Math.max(0.25, Math.min(4, sourceSpan / newDur)).toFixed(2));
+
+  cur.timelineEnd = clampedEnd;
+  cur.playbackRate = newRate;
+  sorted[idx] = cur;
+  return sorted;
+}

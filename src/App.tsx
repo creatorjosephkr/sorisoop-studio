@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Download,
@@ -39,8 +39,9 @@ import {
   AspectRatio,
   BackgroundMedia,
   DEFAULT_LED_METER_SETTINGS,
-  DEFAULT_PRISM_RING_SETTINGS,
   DEFAULT_SPECTRUM_SETTINGS,
+  HOLOGRAM_PALETTES,
+  HologramPalette,
   LyricSegment,
   SpectrumBand,
   SpectrumMode,
@@ -60,6 +61,7 @@ import {
   setVideoClipPlaybackRate,
   sortClips,
   splitVideoClipAt,
+  stretchVideoClipEnd,
   trimVideoClipEdge,
 } from './utils/videoClipUtils';
 import {
@@ -127,6 +129,88 @@ function loadPersistedSettings(): PersistedSettings {
   }
 }
 
+type HologramEnabledKey =
+  | 'hologramEnabled'
+  | 'underwaterEnabled'
+  | 'nebulaEnabled'
+  | 'skyCloudEnabled'
+  | 'plasmaEnabled'
+  | 'prismParticlesEnabled';
+
+type HologramOpacityKey =
+  | 'hologramOpacity'
+  | 'underwaterOpacity'
+  | 'nebulaOpacity'
+  | 'skyCloudOpacity'
+  | 'plasmaOpacity'
+  | 'prismParticlesOpacity';
+
+type HologramPaletteKey =
+  | 'hologramPalette'
+  | 'underwaterPalette'
+  | 'nebulaPalette'
+  | 'skyCloudPalette'
+  | 'plasmaPalette'
+  | 'prismParticlesPalette';
+
+const HOLOGRAM_STYLE_OPTIONS: Array<{
+  label: string;
+  enabledKey: HologramEnabledKey;
+  opacityKey: HologramOpacityKey;
+  paletteKey: HologramPaletteKey;
+  defaultOpacity: number;
+  defaultPalette: HologramPalette;
+}> = [
+  {
+    label: '오로라 구름 띠',
+    enabledKey: 'hologramEnabled',
+    opacityKey: 'hologramOpacity',
+    paletteKey: 'hologramPalette',
+    defaultOpacity: 0.38,
+    defaultPalette: 'aurora',
+  },
+  {
+    label: '물 속 심해 빛결',
+    enabledKey: 'underwaterEnabled',
+    opacityKey: 'underwaterOpacity',
+    paletteKey: 'underwaterPalette',
+    defaultOpacity: 0.55,
+    defaultPalette: 'ocean',
+  },
+  {
+    label: '우주 성운 네뷸라',
+    enabledKey: 'nebulaEnabled',
+    opacityKey: 'nebulaOpacity',
+    paletteKey: 'nebulaPalette',
+    defaultOpacity: 0.6,
+    defaultPalette: 'cosmic',
+  },
+  {
+    label: '하늘 구름 (스카이)',
+    enabledKey: 'skyCloudEnabled',
+    opacityKey: 'skyCloudOpacity',
+    paletteKey: 'skyCloudPalette',
+    defaultOpacity: 0.6,
+    defaultPalette: 'sunset',
+  },
+  {
+    label: '몽환 벨벳 플라즈마',
+    enabledKey: 'plasmaEnabled',
+    opacityKey: 'plasmaOpacity',
+    paletteKey: 'plasmaPalette',
+    defaultOpacity: 0.55,
+    defaultPalette: 'aurora',
+  },
+  {
+    label: '스타더스트 보케 입자',
+    enabledKey: 'prismParticlesEnabled',
+    opacityKey: 'prismParticlesOpacity',
+    paletteKey: 'prismParticlesPalette',
+    defaultOpacity: 0.6,
+    defaultPalette: 'aurora',
+  },
+];
+
 export function App() {
   const initialSettings = useRef<PersistedSettings>(loadPersistedSettings()).current;
 
@@ -138,6 +222,7 @@ export function App() {
   const durationRef = useRef(duration);
   durationRef.current = duration;
   const [currentTime, setCurrentTime] = useState(0);
+  const [timelineFitTrigger, setTimelineFitTrigger] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(initialSettings.volume ?? 0.9);
   const [isMuted, setIsMuted] = useState(initialSettings.isMuted ?? false);
@@ -358,17 +443,23 @@ export function App() {
     return {
       hologramEnabled: initVe?.hologramEnabled ?? false,
       hologramOpacity: initVe?.hologramOpacity ?? 0.38,
-      prismRingEnabled: initVe?.prismRingEnabled ?? false,
-      prismRingOpacity: initVe?.prismRingOpacity ?? DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity,
-      prismRingScale: initVe?.prismRingScale ?? DEFAULT_PRISM_RING_SETTINGS.prismRingScale,
-      prismRingThickness:
-        initVe?.prismRingThickness !== undefined && initVe.prismRingThickness >= 1
-          ? Math.min(300, Math.round(initVe.prismRingThickness))
-          : DEFAULT_PRISM_RING_SETTINGS.prismRingThickness,
-      prismRingColor: initVe?.prismRingColor ?? DEFAULT_PRISM_RING_SETTINGS.prismRingColor,
+      hologramPalette: initVe?.hologramPalette ?? 'aurora',
+      underwaterEnabled: initVe?.underwaterEnabled ?? false,
+      underwaterOpacity: initVe?.underwaterOpacity ?? 0.55,
+      underwaterPalette: initVe?.underwaterPalette ?? 'ocean',
+      nebulaEnabled: initVe?.nebulaEnabled ?? false,
+      nebulaOpacity: initVe?.nebulaOpacity ?? 0.6,
+      nebulaPalette: initVe?.nebulaPalette ?? 'cosmic',
+      skyCloudEnabled: initVe?.skyCloudEnabled ?? false,
+      skyCloudOpacity: initVe?.skyCloudOpacity ?? 0.6,
+      skyCloudPalette: initVe?.skyCloudPalette ?? 'sunset',
+      plasmaEnabled: initVe?.plasmaEnabled ?? false,
+      plasmaOpacity: initVe?.plasmaOpacity ?? 0.55,
+      plasmaPalette: initVe?.plasmaPalette ?? 'aurora',
       prismParticlesEnabled: initVe?.prismParticlesEnabled ?? false,
       prismParticlesOpacity: initVe?.prismParticlesOpacity ?? 0.6,
-      hologramSmoothing: initVe?.hologramSmoothing ?? 0.72,
+      prismParticlesPalette: initVe?.prismParticlesPalette ?? 'aurora',
+      hologramSmoothing: initVe?.hologramSmoothing ?? 0.9,
       spectrumEnabled: initVe?.spectrumEnabled ?? true,
       spectrumMode: initVe?.spectrumMode ?? DEFAULT_SPECTRUM_SETTINGS.spectrumMode,
       spectrumOpacity: initVe?.spectrumOpacity ?? DEFAULT_SPECTRUM_SETTINGS.spectrumOpacity,
@@ -1196,7 +1287,7 @@ export function App() {
       mediaType: 'video' | 'image';
       filePath: string;
     }>,
-    _mode: 'append' | 'insert'
+    mode: 'append' | 'insert'
   ) => {
     if (items.length === 0) return;
     const baseTime = Date.now();
@@ -1215,22 +1306,35 @@ export function App() {
       })
     );
 
-    const insertStart = Math.max(0, Number(currentTime.toFixed(2)));
+    const existingEnd =
+      videoClips.length > 0 ? Math.max(...videoClips.map((c) => c.timelineEnd)) : 0;
+    const insertStart =
+      mode === 'insert'
+        ? Math.max(0, Number(currentTime.toFixed(2)))
+        : Number(existingEnd.toFixed(2));
     const totalAddedDur = probed.reduce((acc, item) => acc + item.sourceDuration, 0);
     const addedEndTime = Number((insertStart + totalAddedDur).toFixed(2));
 
     setVideoClips((prev) => {
       let baseClips = sortClips(prev);
+      const startPos =
+        mode === 'insert'
+          ? insertStart
+          : baseClips.length > 0
+            ? Number(Math.max(...baseClips.map((c) => c.timelineEnd)).toFixed(2))
+            : 0;
 
-      // 재생헤드가 기존 클립 중간에 놓여 있으면 해당 지점에서 분할 후 배치
-      const spanning = baseClips.find(
-        (c) => c.timelineStart < insertStart - 0.05 && c.timelineEnd > insertStart + 0.05
-      );
-      if (spanning) {
-        baseClips = splitVideoClipAt(baseClips, spanning.id, insertStart);
+      // 삽입 모드에서 재생헤드가 기존 클립 중간에 놓여 있으면 해당 지점에서 분할 후 배치
+      if (mode === 'insert') {
+        const spanning = baseClips.find(
+          (c) => c.timelineStart < startPos - 0.05 && c.timelineEnd > startPos + 0.05
+        );
+        if (spanning) {
+          baseClips = splitVideoClipAt(baseClips, spanning.id, startPos);
+        }
       }
 
-      let cursor = insertStart;
+      let cursor = startPos;
       const newClips: VideoClip[] = probed.map((item) => {
         const timelineStart = Number(cursor.toFixed(2));
         const timelineEnd = Number((cursor + item.sourceDuration).toFixed(2));
@@ -1253,7 +1357,8 @@ export function App() {
       });
 
       const newEnd = Number(cursor.toFixed(2));
-      const firstAfter = baseClips.find((c) => c.timelineStart >= insertStart - 0.05);
+      const firstAfter =
+        mode === 'insert' ? baseClips.find((c) => c.timelineStart >= startPos - 0.05) : undefined;
       const overlapShift =
         firstAfter && newEnd > firstAfter.timelineStart
           ? Number((newEnd - firstAfter.timelineStart).toFixed(2))
@@ -1262,7 +1367,7 @@ export function App() {
       const shifted =
         overlapShift > 0
           ? baseClips.map((c) => {
-              if (c.timelineStart >= insertStart - 0.05) {
+              if (c.timelineStart >= startPos - 0.05) {
                 return {
                   ...c,
                   timelineStart: Number((c.timelineStart + overlapShift).toFixed(2)),
@@ -1839,6 +1944,7 @@ export function App() {
       segmentsRef.current = parsed.segments;
       setSelectedSegmentId(parsed.segments[0]?.id ?? null);
       setCurrentProjectPath(filePath ?? null);
+      setTimelineFitTrigger((n) => n + 1);
       setWhisperStatusText(
         audioRestored
           ? `프로젝트 불러오기 완료: ${fileName} (음원 및 ${parsed.segments.length}개 가사 구간 복원)`
@@ -2151,6 +2257,7 @@ export function App() {
               }
             }}
             currentTime={currentTime}
+            fitAllTrigger={timelineFitTrigger}
             isPlaying={isPlaying}
             volume={volume}
             isMuted={isMuted}
@@ -2279,6 +2386,12 @@ export function App() {
             onAppendMedia={() => handleOpenBackground('append')}
             onTrimClipEdge={(id, edge, newTime) =>
               setVideoClips((prev) => trimVideoClipEdge(prev, id, edge, newTime), false)
+            }
+            onStretchClipEnd={(id, newEnd, origEnd, origRate) =>
+              setVideoClips(
+                (prev) => stretchVideoClipEnd(prev, id, newEnd, origEnd, origRate),
+                false
+              )
             }
             onMoveClip={(id, newStartTime) =>
               setVideoClips((prev) => moveVideoClip(prev, id, newStartTime), false)
@@ -2552,205 +2665,84 @@ export function App() {
 
             {rightTab === 'background' && (
               <div className="h-full min-h-0 min-w-0 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable] text-xs">
-                {/* 음악 반응형 홀로그램 */}
-                <SettingSection
-                  title="홀로그램"
-                  action={
-                    visualEffects.prismRingEnabled && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setVisualEffects((v) => ({
-                            ...v,
-                            ...DEFAULT_PRISM_RING_SETTINGS,
-                          }))
-                        }
-                        className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700"
-                        title="프리즘 링 설정을 기본값으로 되돌립니다"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        기본값
-                      </button>
-                    )
-                  }
-                >
-                  <SettingRow label="구름 띠 표시">
-                    <ToggleControl
-                      checked={visualEffects.hologramEnabled}
-                      onChange={(hologramEnabled) =>
-                        setVisualEffects((v) => ({ ...v, hologramEnabled }))
-                      }
-                    />
-                  </SettingRow>
-
-                  {visualEffects.hologramEnabled && (
-                    <SettingRow label="구름 띠 투명도">
-                      <SliderControl
-                        min={0.05}
-                        max={1}
-                        step={0.05}
-                        value={visualEffects.hologramOpacity}
-                        valueLabel={`${Math.round(visualEffects.hologramOpacity * 100)}%`}
-                        onChange={(hologramOpacity) =>
-                          setVisualEffects((v) => ({ ...v, hologramOpacity }))
-                        }
-                      />
-                    </SettingRow>
-                  )}
-
-                  <SettingRow label="프리즘 링">
-                    <ToggleControl
-                      checked={visualEffects.prismRingEnabled ?? false}
-                      onChange={(prismRingEnabled) =>
-                        setVisualEffects((v) => ({ ...v, prismRingEnabled }))
-                      }
-                    />
-                  </SettingRow>
-
-                  {visualEffects.prismRingEnabled && (
-                    <>
-                      <SettingRow label="링 크기">
-                        <SliderControl
-                          min={0.5}
-                          max={1.8}
-                          step={0.05}
-                          value={
-                            visualEffects.prismRingScale ??
-                            DEFAULT_PRISM_RING_SETTINGS.prismRingScale
-                          }
-                          valueLabel={`${Math.round(
-                            (visualEffects.prismRingScale ??
-                              DEFAULT_PRISM_RING_SETTINGS.prismRingScale) * 100
-                          )}%`}
-                          onChange={(prismRingScale) =>
-                            setVisualEffects((v) => ({ ...v, prismRingScale }))
-                          }
-                        />
-                      </SettingRow>
-
-                      <SettingRow label="최대 선 두께">
-                        <SliderControl
-                          min={1}
-                          max={300}
-                          step={1}
-                          value={Math.max(
-                            1,
-                            Math.min(
-                              300,
-                              Math.round(
-                                visualEffects.prismRingThickness ??
-                                  DEFAULT_PRISM_RING_SETTINGS.prismRingThickness
-                              )
-                            )
-                          )}
-                          valueLabel={`${Math.max(
-                            1,
-                            Math.min(
-                              300,
-                              Math.round(
-                                visualEffects.prismRingThickness ??
-                                  DEFAULT_PRISM_RING_SETTINGS.prismRingThickness
-                              )
-                            )
-                          )}px`}
-                          onChange={(prismRingThickness) =>
-                            setVisualEffects((v) => ({ ...v, prismRingThickness }))
-                          }
-                        />
-                      </SettingRow>
-
-                      <SettingRow label="링 투명도">
-                        <SliderControl
-                          min={0.05}
-                          max={1}
-                          step={0.05}
-                          value={
-                            visualEffects.prismRingOpacity ??
-                            DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity
-                          }
-                          valueLabel={`${Math.round(
-                            (visualEffects.prismRingOpacity ??
-                              DEFAULT_PRISM_RING_SETTINGS.prismRingOpacity) * 100
-                          )}%`}
-                          onChange={(prismRingOpacity) =>
-                            setVisualEffects((v) => ({ ...v, prismRingOpacity }))
-                          }
-                        />
-                      </SettingRow>
-
-                      <SettingRow label="링 색상">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setVisualEffects((v) => ({ ...v, prismRingColor: 'auto' }))
+                {/* 음악 반응형 면 채우기 홀로그램 */}
+                <SettingSection title="홀로그램">
+                  {HOLOGRAM_STYLE_OPTIONS.map((item) => {
+                    const isEnabled = Boolean(visualEffects[item.enabledKey]);
+                    const opacityVal = visualEffects[item.opacityKey] ?? item.defaultOpacity;
+                    const activePalette = visualEffects[item.paletteKey] ?? item.defaultPalette;
+                    return (
+                      <Fragment key={item.enabledKey}>
+                        <SettingRow label={item.label}>
+                          <ToggleControl
+                            checked={isEnabled}
+                            onChange={(checked) =>
+                              setVisualEffects((v) => ({ ...v, [item.enabledKey]: checked }))
                             }
-                            className={`rounded px-2 py-1 text-[10px] font-medium ${
-                              (visualEffects.prismRingColor ?? 'auto') === 'auto'
-                                ? 'bg-cyan-500 text-slate-950'
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                            }`}
-                          >
-                            자동 홀로그램
-                          </button>
-                          <input
-                            type="color"
-                            value={
-                              (visualEffects.prismRingColor ?? 'auto') === 'auto'
-                                ? '#38bdf8'
-                                : visualEffects.prismRingColor
-                            }
-                            onChange={(e) =>
-                              setVisualEffects((v) => ({
-                                ...v,
-                                prismRingColor: e.target.value,
-                              }))
-                            }
-                            title="프리즘 링 단색 지정"
-                            className="h-6 w-8 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
                           />
-                        </div>
-                      </SettingRow>
-                    </>
-                  )}
+                        </SettingRow>
 
-                  <SettingRow label="스타더스트 입자">
-                    <ToggleControl
-                      checked={visualEffects.prismParticlesEnabled ?? false}
-                      onChange={(prismParticlesEnabled) =>
-                        setVisualEffects((v) => ({ ...v, prismParticlesEnabled }))
-                      }
-                    />
-                  </SettingRow>
+                        {isEnabled && (
+                          <>
+                            <SettingRow label="투명도">
+                              <SliderControl
+                                min={0.05}
+                                max={1}
+                                step={0.05}
+                                value={opacityVal}
+                                valueLabel={`${Math.round(opacityVal * 100)}%`}
+                                onChange={(val) =>
+                                  setVisualEffects((v) => ({ ...v, [item.opacityKey]: val }))
+                                }
+                              />
+                            </SettingRow>
+                            <SettingRow label="색상 테마">
+                              <div className="grid grid-cols-3 gap-1">
+                                {HOLOGRAM_PALETTES.map((pal) => {
+                                  const selected = activePalette === pal.id;
+                                  return (
+                                    <button
+                                      key={pal.id}
+                                      type="button"
+                                      onClick={() =>
+                                        setVisualEffects((v) => ({
+                                          ...v,
+                                          [item.paletteKey]: pal.id,
+                                        }))
+                                      }
+                                      className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition ${
+                                        selected
+                                          ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                      }`}
+                                    >
+                                      <span
+                                        className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/25"
+                                        style={{
+                                          background: `linear-gradient(135deg, ${pal.swatch[0]}, ${pal.swatch[1]})`,
+                                        }}
+                                      />
+                                      <span className="truncate">{pal.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </SettingRow>
+                          </>
+                        )}
+                      </Fragment>
+                    );
+                  })}
 
-                  {visualEffects.prismParticlesEnabled && (
-                    <SettingRow label="입자 투명도">
-                      <SliderControl
-                        min={0.05}
-                        max={1}
-                        step={0.05}
-                        value={visualEffects.prismParticlesOpacity ?? 0.6}
-                        valueLabel={`${Math.round(
-                          (visualEffects.prismParticlesOpacity ?? 0.6) * 100
-                        )}%`}
-                        onChange={(prismParticlesOpacity) =>
-                          setVisualEffects((v) => ({ ...v, prismParticlesOpacity }))
-                        }
-                      />
-                    </SettingRow>
-                  )}
-
-                  {(visualEffects.hologramEnabled ||
-                    visualEffects.prismRingEnabled ||
-                    visualEffects.prismParticlesEnabled) && (
+                  {HOLOGRAM_STYLE_OPTIONS.some((item) => Boolean(visualEffects[item.enabledKey])) && (
                     <SettingRow label="부드러운 움직임">
                       <SliderControl
                         min={0}
                         max={0.94}
                         step={0.02}
-                        value={visualEffects.hologramSmoothing ?? 0.72}
+                        value={visualEffects.hologramSmoothing ?? 0.9}
                         valueLabel={`${Math.round(
-                          (visualEffects.hologramSmoothing ?? 0.72) * 100
+                          (visualEffects.hologramSmoothing ?? 0.9) * 100
                         )}%`}
                         onChange={(hologramSmoothing) =>
                           setVisualEffects((v) => ({ ...v, hologramSmoothing }))
@@ -2906,7 +2898,7 @@ export function App() {
                       <SettingRow label="높이">
                         <SliderControl
                           min={0.06}
-                          max={0.45}
+                          max={0.85}
                           step={0.01}
                           value={visualEffects.spectrumHeight ?? 0.18}
                           valueLabel={`${Math.round((visualEffects.spectrumHeight ?? 0.18) * 100)}%`}

@@ -105,8 +105,8 @@ tell application "Finder"
     set icon size of viewOptions to 112
     set text size of viewOptions to 12
     set background picture of viewOptions to file ".background:background.png"
-    set position of item "${KOREAN_APP_NAME}.app" of container window to {185, 188}
-    set position of item "Applications" of container window to {475, 188}
+    set position of item "${KOREAN_APP_NAME}.app" of container window to {185, 170}
+    set position of item "Applications" of container window to {475, 170}
     close
     open
     update without registering applications
@@ -204,16 +204,33 @@ function activateFfmpegBinary(platform, arch, binaryName) {
   }
 }
 
+function resolveSelectedTargets(argv) {
+  const flags = new Set(argv);
+  if (flags.has('--mac-arm64')) {
+    return TARGETS.filter((t) => t.id === 'mac-arm64');
+  }
+  if (flags.has('--mac')) {
+    return TARGETS.filter((t) => t.platform === 'darwin');
+  }
+  if (flags.has('--win')) {
+    return TARGETS.filter((t) => t.platform === 'win32');
+  }
+  return TARGETS;
+}
+
 function main() {
   if (!fs.existsSync(ffmpegStaticDir)) {
     throw new Error('node_modules/ffmpeg-static is missing. Run npm install first.');
   }
 
-  console.log('[1/4] Building app (TypeScript + Vite + Electron)...');
+  const selectedTargets = resolveSelectedTargets(process.argv.slice(2));
+  const totalSteps = selectedTargets.length + 1;
+
+  console.log(`[1/${totalSteps}] Building app (TypeScript + Vite + Electron)...`);
   run('npm', ['run', 'build']);
 
   seedHostBinaryToCache();
-  for (const target of TARGETS) {
+  for (const target of selectedTargets) {
     ensureFfmpegCached(target.platform, target.arch, target.binaryName);
   }
 
@@ -227,8 +244,8 @@ function main() {
   const builderCmd = fs.existsSync(electronBuilderBin) ? electronBuilderBin : npxCmd;
 
   try {
-    TARGETS.forEach((target, idx) => {
-      console.log(`\n[${idx + 2}/4] Packaging ${target.id} (${target.platform}-${target.arch})...`);
+    selectedTargets.forEach((target, idx) => {
+      console.log(`\n[${idx + 2}/${totalSteps}] Packaging ${target.id} (${target.platform}-${target.arch})...`);
       activateFfmpegBinary(target.platform, target.arch, target.binaryName);
       const args = builderCmd === npxCmd ? ['electron-builder', ...target.builderArgs] : target.builderArgs;
       run(builderCmd, args);

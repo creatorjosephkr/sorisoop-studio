@@ -97,10 +97,37 @@ export interface VideoClip {
 export type SpectrumMode = 'digital' | 'analog';
 export type SpectrumBand = 'all' | 'bass' | 'mid' | 'treble';
 export type SpectrumShape = 'mirror' | 'bottom' | 'dots' | 'line';
+export type HologramPalette = 'aurora' | 'ocean' | 'sunset' | 'cosmic' | 'emerald' | 'moonlight';
+
+export const HOLOGRAM_PALETTES: Array<{
+  id: HologramPalette;
+  label: string;
+  swatch: [string, string];
+}> = [
+  { id: 'aurora', label: '오로라', swatch: ['#22d3ee', '#c084fc'] },
+  { id: 'ocean', label: '심해', swatch: ['#06b6d4', '#3b82f6'] },
+  { id: 'sunset', label: '노을', swatch: ['#fb7185', '#fbbf24'] },
+  { id: 'cosmic', label: '우주', swatch: ['#a855f7', '#ec4899'] },
+  { id: 'emerald', label: '숲빛', swatch: ['#34d399', '#a3e635'] },
+  { id: 'moonlight', label: '달빛', swatch: ['#93c5fd', '#e0e7ff'] },
+];
 
 export interface VisualEffectsConfig {
   hologramEnabled: boolean;
   hologramOpacity: number; // 0.05 ~ 1.0
+  hologramPalette?: HologramPalette;
+  underwaterEnabled?: boolean;
+  underwaterOpacity?: number; // 0.05 ~ 1.0
+  underwaterPalette?: HologramPalette;
+  nebulaEnabled?: boolean;
+  nebulaOpacity?: number; // 0.05 ~ 1.0
+  nebulaPalette?: HologramPalette;
+  skyCloudEnabled?: boolean;
+  skyCloudOpacity?: number; // 0.05 ~ 1.0
+  skyCloudPalette?: HologramPalette;
+  plasmaEnabled?: boolean;
+  plasmaOpacity?: number; // 0.05 ~ 1.0
+  plasmaPalette?: HologramPalette;
   prismRingEnabled?: boolean;
   prismRingOpacity?: number; // 0.05 ~ 1.0
   prismRingScale?: number; // 0.5 ~ 1.8
@@ -108,12 +135,19 @@ export interface VisualEffectsConfig {
   prismRingColor?: string; // 'auto' | hex
   prismParticlesEnabled?: boolean;
   prismParticlesOpacity?: number; // 0.05 ~ 1.0
+  prismParticlesPalette?: HologramPalette;
+  silkWaveEnabled?: boolean;
+  silkWaveOpacity?: number; // 0.05 ~ 1.0
+  kaleidoscopeEnabled?: boolean;
+  kaleidoscopeOpacity?: number; // 0.05 ~ 1.0
+  neonGridEnabled?: boolean;
+  neonGridOpacity?: number; // 0.05 ~ 1.0
   hologramSmoothing?: number; // 0 ~ 0.94 (음악 반응형 홀로그램 부드러운 움직임)
   spectrumEnabled: boolean;
   spectrumMode: SpectrumMode;
   spectrumOpacity: number; // 0.05 ~ 1.0
   spectrumBand?: SpectrumBand;
-  spectrumHeight?: number; // 0.06 ~ 0.45
+  spectrumHeight?: number; // 0.06 ~ 0.85
   spectrumWidth?: number; // 0.25 ~ 1.0
   spectrumColor?: string; // 'auto' | hex
   spectrumThickness?: number; // 0.4 ~ 2.4

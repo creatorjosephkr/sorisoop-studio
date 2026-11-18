@@ -38,6 +38,7 @@ interface WaveformTimelineProps {
   audioSourceDuration?: number;
   onChangeAudioDuration?: (newDuration: number) => void;
   currentTime: number;
+  fitAllTrigger?: number;
   isPlaying: boolean;
   volume: number;
   isMuted: boolean;
@@ -71,6 +72,7 @@ interface WaveformTimelineProps {
   onInsertMediaAtCurrent: () => void;
   onAppendMedia: () => void;
   onTrimClipEdge: (id: string, edge: 'start' | 'end', newTime: number) => void;
+  onStretchClipEnd?: (id: string, newEnd: number, origEnd: number, origRate: number) => void;
   onMoveClip: (id: string, newStartTime: number) => void;
   onUpdateClip: (id: string, patch: Partial<VideoClip>, recordHistory?: boolean) => void;
   onFitClipToSegment?: (clipId: string, refTime?: number) => void;
@@ -99,6 +101,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   audioSourceDuration,
   onChangeAudioDuration,
   currentTime,
+  fitAllTrigger = 0,
   isPlaying,
   volume,
   isMuted,
@@ -132,6 +135,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   onInsertMediaAtCurrent,
   onAppendMedia,
   onTrimClipEdge,
+  onStretchClipEnd,
   onMoveClip,
   onUpdateClip,
   onFitClipToSegment,
@@ -151,7 +155,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   const videoTrackRef = useRef<HTMLDivElement | null>(null);
   const rulerRef = useRef<HTMLDivElement | null>(null);
   const isRulerDraggingRef = useRef(false);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.85);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const pendingScrollAnchorRef = useRef<{ time: number; screenX: number } | null>(null);
@@ -237,7 +241,14 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
   >(null);
 
   const clipDragRef = useRef<
-    | { mode: 'trim-start' | 'trim-end'; id: string; startX: number; origStart: number; origEnd: number }
+    | {
+        mode: 'trim-start' | 'trim-end';
+        id: string;
+        startX: number;
+        origStart: number;
+        origEnd: number;
+        origRate?: number;
+      }
     | { mode: 'move'; id: string; startX: number; origStart: number; origEnd: number }
     | { mode: 'trans' | 'trans-out'; id: string; startX: number; origDur: number }
     | null
@@ -330,6 +341,12 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     pendingScrollAnchorRef.current = { time: 0, screenX: 0 };
     setZoom(FIT_ALL_ZOOM);
   }, []);
+
+  useEffect(() => {
+    if (fitAllTrigger > 0) {
+      fitAllTimeline();
+    }
+  }, [fitAllTrigger, fitAllTimeline]);
 
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
@@ -578,14 +595,19 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
         }
       } else if (drag.mode === 'trim-end') {
         const raw = drag.origEnd + deltaSec;
+        let targetEnd = raw;
         if (useSnap) {
           const pts = collectSnapPoints({ clipId: drag.id });
           const res = snapEdgeTime(raw, pts, thresholdSec);
           setSnapGuideTime(res.snappedTo);
-          onTrimClipEdge(drag.id, 'end', res.time);
+          targetEnd = res.time;
         } else {
           setSnapGuideTime(null);
-          onTrimClipEdge(drag.id, 'end', raw);
+        }
+        if ((e.metaKey || e.ctrlKey) && onStretchClipEnd) {
+          onStretchClipEnd(drag.id, targetEnd, drag.origEnd, drag.origRate ?? 1);
+        } else {
+          onTrimClipEdge(drag.id, 'end', targetEnd);
         }
       } else if (drag.mode === 'move') {
         const rawStart = drag.origStart + deltaSec;
@@ -654,6 +676,7 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
     videoClips,
     rangedTextLayers,
     onTrimClipEdge,
+  onStretchClipEnd,
     onMoveClip,
     onUpdateClip,
   ]);
@@ -1850,10 +1873,15 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                             startX: e.clientX,
                             origStart: clip.timelineStart,
                             origEnd: clip.timelineEnd,
+                            origRate: clip.playbackRate ?? 1,
                           };
                         }}
                         className="absolute top-0 right-0 bottom-0 z-20 w-1.5 cursor-ew-resize bg-emerald-300/40 opacity-0 group-hover:opacity-100 hover:bg-emerald-300"
-                        title="뒤 길이 조절 (트림)"
+                        title={
+                          clip.mediaType === 'video'
+                            ? '뒤 길이 조절 (트림 / ⌘+드래그: 속도 조절)'
+                            : '뒤 길이 조절 (트림)'
+                        }
                       />
                     </div>
                   );
@@ -2070,7 +2098,14 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       {/* 트랜지션 적용 모달 (클립 경계 클릭 시) */}
       {transitionModal && (
         <div
-          onClick={() => setTransitionModal(null)}
+          onMouseDown={(e) => {
+            e.currentTarget.dataset.backdropDown = e.target === e.currentTarget ? '1' : '0';
+          }}
+          onClick={(e) => {
+            const wasDown = e.currentTarget.dataset.backdropDown === '1';
+            e.currentTarget.dataset.backdropDown = '0';
+            if (wasDown && e.target === e.currentTarget) setTransitionModal(null);
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
         >
           <div
@@ -2188,7 +2223,14 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
       {/* 텍스트 트랜지션 적용 모달 (텍스트 트랙 우클릭/클릭 시) */}
       {textTransitionModal && (
         <div
-          onClick={() => setTextTransitionModal(null)}
+          onMouseDown={(e) => {
+            e.currentTarget.dataset.backdropDown = e.target === e.currentTarget ? '1' : '0';
+          }}
+          onClick={(e) => {
+            const wasDown = e.currentTarget.dataset.backdropDown === '1';
+            e.currentTarget.dataset.backdropDown = '0';
+            if (wasDown && e.target === e.currentTarget) setTextTransitionModal(null);
+          }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
         >
           <div

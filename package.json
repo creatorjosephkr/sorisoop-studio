@@ -1,13 +1,13 @@
 {
   "name": "sorisoop-lyrics",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "로컬 Whisper 가사 싱크 & 무료 한글 폰트 내장 뮤직비디오 제작 스튜디오 (Windows / macOS)",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && tsc -p tsconfig.electron.json && electron .\"",
-    "package:mac": "npm run build && electron-builder --mac",
+    "package:mac": "node scripts/package-all.mjs --mac-arm64",
     "package:win": "npm run build && electron-builder --win",
     "package:all": "node scripts/package-all.mjs",
     "package": "npm run package:all"
