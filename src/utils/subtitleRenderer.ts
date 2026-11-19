@@ -164,6 +164,8 @@ function drawCoverMedia(
   ctx.drawImage(media, offsetX, offsetY, drawW, drawH);
 }
 
+const IMAGE_ZOOM_RATE_PER_SEC = 0.025; // 사진 길이에 무관하게 초당 2.5% 일정 속도 유지
+
 function drawClipMedia(
   ctx: CanvasRenderingContext2D,
   clip: VideoClip,
@@ -171,7 +173,9 @@ function drawClipMedia(
   canvasW: number,
   canvasH: number,
   shiftX = 0,
-  extraAlpha = 1
+  extraAlpha = 1,
+  currentTime?: number,
+  animRange?: { start: number; end: number }
 ) {
   if (!el) return;
   const mediaW = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
@@ -205,6 +209,27 @@ function drawClipMedia(
       drawW = canvasH * mediaRatio;
     }
   }
+
+  let zoomScale = 1.0;
+  if (
+    clip.mediaType === 'image' &&
+    currentTime !== undefined &&
+    (clip.imageZoom === 'in' || clip.imageZoom === 'out')
+  ) {
+    const animStart = animRange?.start ?? clip.timelineStart;
+    const animEnd = animRange?.end ?? clip.timelineEnd;
+    const clipDur = Math.max(0.25, animEnd - animStart);
+    const elapsed = Math.max(0, Math.min(clipDur, currentTime - animStart));
+    const maxZoom = Math.max(1.05, Math.min(2.5, clip.imageZoomMax ?? 1.4));
+    if (clip.imageZoom === 'in') {
+      zoomScale = Math.min(maxZoom, 1.0 + elapsed * IMAGE_ZOOM_RATE_PER_SEC);
+    } else {
+      const startZoom = Math.min(maxZoom, 1.0 + clipDur * IMAGE_ZOOM_RATE_PER_SEC);
+      zoomScale = Math.max(1.0, startZoom - elapsed * IMAGE_ZOOM_RATE_PER_SEC);
+    }
+  }
+  drawW *= zoomScale;
+  drawH *= zoomScale;
 
   const offsetX = (canvasW - drawW) / 2 + shiftX;
   const offsetY = (canvasH - drawH) / 2;
@@ -460,6 +485,51 @@ export function renderMusicVideoFrame({
       ctx.fillRect(0, 0, width, height);
 
       const sorted = [...videoClips].sort((a, b) => a.timelineStart - b.timelineStart);
+      const getAnimRange = (clip: VideoClip): { start: number; end: number } => {
+        const idx = sorted.findIndex((c) => c.id === clip.id);
+        let start = clip.timelineStart;
+        let end = clip.timelineEnd;
+        if (idx > 0) {
+          const prev = sorted[idx - 1];
+          const prevOut = prev.transitionOut;
+          if (
+            prevOut &&
+            prevOut.type !== 'none' &&
+            Math.abs(clip.timelineStart - prev.timelineEnd) <= 0.15
+          ) {
+            start -= Math.max(0.05, prevOut.durationSec);
+          }
+        }
+        if (idx !== -1 && idx < sorted.length - 1) {
+          const next = sorted[idx + 1];
+          const nextIn = next.transitionIn;
+          if (
+            nextIn &&
+            nextIn.type !== 'none' &&
+            Math.abs(next.timelineStart - clip.timelineEnd) <= 0.15
+          ) {
+            end += Math.max(0.05, nextIn.durationSec);
+          }
+        }
+        return { start, end: Math.max(start + 0.25, end) };
+      };
+      const drawClip = (
+        clip: VideoClip,
+        el: HTMLImageElement | HTMLVideoElement | undefined,
+        shiftX: number,
+        extraAlpha: number
+      ) =>
+        drawClipMedia(
+          ctx,
+          clip,
+          el,
+          width,
+          height,
+          shiftX,
+          extraAlpha,
+          currentTime,
+          getAnimRange(clip)
+        );
       const activeIdx = sorted.findIndex(
         (c) => currentTime >= c.timelineStart && currentTime < c.timelineEnd
       );
@@ -490,27 +560,27 @@ export function renderMusicVideoFrame({
         if (trans && trans.type !== 'none' && elapsedInClip < transDur) {
           const p = Math.max(0, Math.min(1, elapsedInClip / transDur));
           if (trans.type === 'x-dissolve') {
-            if (prevClip && prevEl) drawClipMedia(ctx, prevClip, prevEl, width, height, 0, 1);
-            drawClipMedia(ctx, curClip, curEl, width, height, 0, p);
+            if (prevClip && prevEl) drawClip(prevClip, prevEl, 0, 1);
+            drawClip(curClip, curEl, 0, p);
           } else if (trans.type === 'push') {
             if (prevClip && prevEl) {
-              drawClipMedia(ctx, prevClip, prevEl, width, height, -width * p, 1);
+              drawClip(prevClip, prevEl, -width * p, 1);
             }
-            drawClipMedia(ctx, curClip, curEl, width, height, width * (1 - p), 1);
+            drawClip(curClip, curEl, width * (1 - p), 1);
           } else if (trans.type === 'slide') {
-            if (prevClip && prevEl) drawClipMedia(ctx, prevClip, prevEl, width, height, 0, 1);
-            drawClipMedia(ctx, curClip, curEl, width, height, width * (1 - p), 1);
+            if (prevClip && prevEl) drawClip(prevClip, prevEl, 0, 1);
+            drawClip(curClip, curEl, width * (1 - p), 1);
           } else if (trans.type === 'dip-to-black' || trans.type === 'dip-to-white') {
             const dipColor = trans.type === 'dip-to-white' ? '#ffffff' : '#000000';
             if (p < 0.5) {
-              if (prevClip && prevEl) drawClipMedia(ctx, prevClip, prevEl, width, height, 0, 1);
+              if (prevClip && prevEl) drawClip(prevClip, prevEl, 0, 1);
               ctx.save();
               ctx.globalAlpha = p * 2;
               ctx.fillStyle = dipColor;
               ctx.fillRect(0, 0, width, height);
               ctx.restore();
             } else {
-              drawClipMedia(ctx, curClip, curEl, width, height, 0, 1);
+              drawClip(curClip, curEl, 0, 1);
               ctx.save();
               ctx.globalAlpha = (1 - p) * 2;
               ctx.fillStyle = dipColor;
@@ -520,9 +590,9 @@ export function renderMusicVideoFrame({
           } else if (trans.type === 'tv-static') {
             const jitterX = (Math.sin(currentTime * 190) * 14) * Math.sin(p * Math.PI);
             if (p < 0.5 && prevClip && prevEl) {
-              drawClipMedia(ctx, prevClip, prevEl, width, height, jitterX, 1);
+              drawClip(prevClip, prevEl, jitterX, 1);
             } else {
-              drawClipMedia(ctx, curClip, curEl, width, height, jitterX, 1);
+              drawClip(curClip, curEl, jitterX, 1);
             }
             drawTvStaticOverlay(ctx, width, height, p, currentTime);
           }
@@ -530,31 +600,31 @@ export function renderMusicVideoFrame({
           const p = Math.max(0, Math.min(1, 1 - remainingInClip / transOutDur));
           if (transOut.type === 'x-dissolve') {
             if (isNextAdjacent && nextClip && nextEl) {
-              drawClipMedia(ctx, nextClip, nextEl, width, height, 0, 1);
+              drawClip(nextClip, nextEl, 0, 1);
             }
-            drawClipMedia(ctx, curClip, curEl, width, height, 0, 1 - p);
+            drawClip(curClip, curEl, 0, 1 - p);
           } else if (transOut.type === 'push') {
-            drawClipMedia(ctx, curClip, curEl, width, height, -width * p, 1);
+            drawClip(curClip, curEl, -width * p, 1);
             if (isNextAdjacent && nextClip && nextEl) {
-              drawClipMedia(ctx, nextClip, nextEl, width, height, width * (1 - p), 1);
+              drawClip(nextClip, nextEl, width * (1 - p), 1);
             }
           } else if (transOut.type === 'slide') {
             if (isNextAdjacent && nextClip && nextEl) {
-              drawClipMedia(ctx, nextClip, nextEl, width, height, 0, 1);
+              drawClip(nextClip, nextEl, 0, 1);
             }
-            drawClipMedia(ctx, curClip, curEl, width, height, -width * p, 1);
+            drawClip(curClip, curEl, -width * p, 1);
           } else if (transOut.type === 'dip-to-black' || transOut.type === 'dip-to-white') {
             const dipColor = transOut.type === 'dip-to-white' ? '#ffffff' : '#000000';
             if (isNextAdjacent && nextClip && nextEl) {
               if (p < 0.5) {
-                drawClipMedia(ctx, curClip, curEl, width, height, 0, 1);
+                drawClip(curClip, curEl, 0, 1);
                 ctx.save();
                 ctx.globalAlpha = p * 2;
                 ctx.fillStyle = dipColor;
                 ctx.fillRect(0, 0, width, height);
                 ctx.restore();
               } else {
-                drawClipMedia(ctx, nextClip, nextEl, width, height, 0, 1);
+                drawClip(nextClip, nextEl, 0, 1);
                 ctx.save();
                 ctx.globalAlpha = (1 - p) * 2;
                 ctx.fillStyle = dipColor;
@@ -562,7 +632,7 @@ export function renderMusicVideoFrame({
                 ctx.restore();
               }
             } else {
-              drawClipMedia(ctx, curClip, curEl, width, height, 0, 1);
+              drawClip(curClip, curEl, 0, 1);
               ctx.save();
               ctx.globalAlpha = p;
               ctx.fillStyle = dipColor;
@@ -572,14 +642,14 @@ export function renderMusicVideoFrame({
           } else if (transOut.type === 'tv-static') {
             const jitterX = (Math.sin(currentTime * 190) * 14) * Math.sin(p * Math.PI);
             if (p >= 0.5 && isNextAdjacent && nextClip && nextEl) {
-              drawClipMedia(ctx, nextClip, nextEl, width, height, jitterX, 1);
+              drawClip(nextClip, nextEl, jitterX, 1);
             } else {
-              drawClipMedia(ctx, curClip, curEl, width, height, jitterX, 1);
+              drawClip(curClip, curEl, jitterX, 1);
             }
             drawTvStaticOverlay(ctx, width, height, p, currentTime);
           }
         } else {
-          drawClipMedia(ctx, curClip, curEl, width, height, 0, 1);
+          drawClip(curClip, curEl, 0, 1);
         }
       }
 
@@ -1133,6 +1203,346 @@ export function renderMusicVideoFrame({
       const size = (2.6 + (i % 4) * 1.6 + binVal * 7.5) * baseScale;
       const hue = (spec.hues[i % spec.hues.length] + t * 16 + i * 7) % 360;
       fillSoftOrb(ctx, px, py, size * 3.6, hue, spec.sat, spec.light + 20, 0.38 + binVal * 0.48, 30);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A7. 북극 오로라 커튼 (상단으로 타오르듯 퍼지는 수직 커튼 오로라 면)
+  if (!transparentBackground && visualEffects?.auroraCurtainEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.55);
+    const bass = Math.min(1, bassEnergy * 1.7);
+    const spec = getHologramPaletteSpec(visualEffects.auroraCurtainPalette ?? 'aurora');
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.auroraCurtainOpacity ?? 0.6));
+
+    // 극야 밤하늘 배경 면
+    fillBackdropGradient(ctx, width, height, spec, 6 + vol * 5, 13 + bass * 6, 0.88);
+
+    // 은은한 북극 지평선 산란 광채 면
+    fillSoftOrb(
+      ctx,
+      width * 0.5,
+      height * 0.88,
+      Math.max(width, height) * 0.55,
+      spec.hues[0],
+      spec.sat,
+      spec.light + 6,
+      0.16 + bass * 0.14,
+      25
+    );
+
+    // 4겹의 너울거리는 오로라 커튼 면 (아래쪽 발광 능선에서 위쪽 하늘로 투명하게 번짐)
+    const curtains = [
+      { baseY: 0.42, heightScale: 0.34, speed: 0.28, freq: 2.2, hLow: 0, hHigh: 2, binOff: 0 },
+      { baseY: 0.52, heightScale: 0.38, speed: -0.22, freq: 1.8, hLow: 1, hHigh: 3, binOff: 12 },
+      { baseY: 0.60, heightScale: 0.32, speed: 0.19, freq: 2.6, hLow: 0, hHigh: 1, binOff: 24 },
+      { baseY: 0.48, heightScale: 0.28, speed: -0.31, freq: 3.1, hLow: 2, hHigh: 3, binOff: 36 },
+    ];
+    const steps = 32;
+    const curtainBlur = Math.max(12, Math.round(22 * baseScale));
+
+    for (let c = 0; c < curtains.length; c++) {
+      const ct = curtains[c];
+      const topPts: Array<{ x: number; y: number }> = [];
+      const botPts: Array<{ x: number; y: number }> = [];
+      let minTopY = height;
+      let maxBotY = 0;
+
+      for (let i = 0; i <= steps; i++) {
+        const u = i / steps;
+        const x = -width * 0.05 + u * width * 1.1;
+        const binVal = rawBins.length > 0 ? rawBins[(ct.binOff + i) % rawBins.length] / 255 : 0.16;
+
+        const ribbonWave =
+          Math.sin(u * Math.PI * ct.freq + t * ct.speed + c * 1.3) * minDim * (0.065 + vol * 0.085) +
+          Math.cos(u * Math.PI * (ct.freq * 1.9) - t * ct.speed * 1.45 + c) *
+            minDim *
+            (0.025 + binVal * 0.055);
+        const botY = height * ct.baseY + ribbonWave;
+        const flareH =
+          minDim *
+          ct.heightScale *
+          (0.62 + 0.38 * Math.sin(u * Math.PI * 3.6 + t * 0.55 + c * 2.1) + binVal * 0.85 + bass * 0.35);
+        const topY = botY - flareH;
+
+        if (topY < minTopY) minTopY = topY;
+        if (botY > maxBotY) maxBotY = botY;
+        topPts.push({ x, y: topY });
+        botPts.push({ x, y: botY });
+      }
+
+      const lowHue = (spec.hues[ct.hLow] + t * 8 + c * 10) % 360;
+      const highHue = (spec.hues[ct.hHigh] + t * 8 + c * 12) % 360;
+      const baseAlpha = Math.min(0.42, 0.16 + vol * 0.18 + bass * 0.1);
+      const grad = ctx.createLinearGradient(0, maxBotY, 0, minTopY);
+      grad.addColorStop(0, `hsla(${lowHue}, ${spec.sat}%, ${Math.min(84, spec.light + 16)}%, ${baseAlpha})`);
+      grad.addColorStop(0.22, `hsla(${lowHue}, ${spec.sat}%, ${spec.light + 6}%, ${baseAlpha * 0.82})`);
+      grad.addColorStop(0.65, `hsla(${highHue}, ${spec.sat}%, ${spec.light}%, ${baseAlpha * 0.34})`);
+      grad.addColorStop(1, `hsla(${highHue}, ${spec.sat}%, ${Math.max(24, spec.light - 10)}%, 0)`);
+
+      fillBlurredSurface(ctx, topPts, botPts, grad, curtainBlur);
+    }
+
+    // 오로라 커튼 사이 은은한 극지방 별빛 보케 면
+    const starCount = 26;
+    for (let s = 0; s < starCount; s++) {
+      const s1 = Math.sin(s * 31.73) * 43758.5453;
+      const s2 = Math.cos(s * 71.29) * 24634.6345;
+      const fx = s1 - Math.floor(s1);
+      const fy = s2 - Math.floor(s2);
+      const binVal = rawBins.length > 0 ? rawBins[s % rawBins.length] / 255 : 0.1;
+      const sx = fx * width;
+      const sy = fy * height * 0.65;
+      const sr = (2.2 + (s % 3) * 1.4 + binVal * 6) * baseScale;
+      const sHue = (spec.hues[s % 4] + t * 10) % 360;
+      fillSoftOrb(ctx, sx, sy, sr * 2.5, sHue, spec.sat, spec.light + 24, 0.22 + binVal * 0.38, 20);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A8. 눈 내리는 밤 (겨울 밤하늘 + 노래 진행에 따라 소복히 쌓이는 설원 + 착지 후 사라지지 않고 남는 눈송이)
+  if (!transparentBackground && visualEffects?.snowNightEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.45);
+    const bass = Math.min(1, bassEnergy * 1.6);
+    const spec = getHologramPaletteSpec(visualEffects.snowNightPalette ?? 'moonlight');
+    const snowSize = Math.max(0.4, Math.min(2.4, visualEffects.snowNightSize ?? 1.0));
+    const flakeCount = Math.max(15, Math.min(150, Math.round(visualEffects.snowNightCount ?? 52)));
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.snowNightOpacity ?? 0.65));
+
+    // 깊은 겨울 밤하늘 그라데이션 면
+    fillBackdropGradient(ctx, width, height, spec, 7 + vol * 4, 14 + bass * 5, 0.88);
+
+    // 상단 밤하늘 은은한 달빛 후광 면
+    fillSoftOrb(
+      ctx,
+      width * 0.78,
+      height * 0.22,
+      minDim * (0.34 + bass * 0.08),
+      spec.hues[0],
+      Math.max(30, spec.sat - 20),
+      Math.min(90, spec.light + 18),
+      0.22 + vol * 0.14,
+      18
+    );
+
+    // 시간에 따라 서서히 두꺼워지며 노래 한 곡이 끝날 때 소복히 쌓이는 설원 높이 함수
+    const accumDuration = Math.max(25, duration > 0 ? duration * 0.92 : 120);
+    const densityFactor = Math.min(1.35, (flakeCount / 52) * 0.65 + snowSize * 0.35);
+    const getAccumAt = (tau: number): number =>
+      Math.min(1, Math.max(0, tau / accumDuration)) * densityFactor;
+
+    const getSnowSurfaceYRatio = (layerIdx: number, u: number, tau: number): number => {
+      const accum = getAccumAt(tau);
+      const baseY = layerIdx === 0 ? 1.012 - 0.165 * accum : 1.018 - 0.145 * accum;
+      const amp = 0.004 + 0.02 * accum;
+      const freq = layerIdx === 0 ? 2.1 : 2.7;
+      const phase = layerIdx === 0 ? 0.4 : 2.2;
+      const hill =
+        Math.sin(u * Math.PI * freq + phase) * amp +
+        Math.cos(u * Math.PI * (freq * 1.8) - phase * 0.7) * (amp * 0.42);
+      return baseY + hill;
+    };
+
+    const accumNow = Math.min(1, Math.max(0, t / accumDuration));
+    const snowSteps = 28;
+    const sSat = Math.max(15, Math.round(spec.sat * 0.42));
+    for (let d = 0; d < 2; d++) {
+      const topPts: Array<{ x: number; y: number }> = [];
+      const botPts: Array<{ x: number; y: number }> = [];
+      let minY = height;
+      for (let i = 0; i <= snowSteps; i++) {
+        const u = i / snowSteps;
+        const x = -width * 0.04 + u * width * 1.08;
+        const y = height * getSnowSurfaceYRatio(d, u, t);
+        if (y < minY) minY = y;
+        topPts.push({ x, y });
+        botPts.push({ x, y: height * 1.04 });
+      }
+      const alpha = (d === 0 ? 0.28 : 0.42) + accumNow * 0.12;
+      const blur = d === 0 ? 10 : 6;
+      const snowGrad = ctx.createLinearGradient(0, minY, 0, height);
+      const sHue = spec.hues[d % 2];
+      snowGrad.addColorStop(0, `hsla(${sHue}, ${sSat}%, 96%, ${alpha + bass * 0.08})`);
+      snowGrad.addColorStop(0.55, `hsla(${sHue}, ${sSat}%, 84%, ${alpha * 0.82})`);
+      snowGrad.addColorStop(1, `hsla(${spec.hues[1]}, ${sSat}%, 70%, ${alpha * 0.6})`);
+      fillBlurredSurface(ctx, topPts, botPts, snowGrad, Math.max(3, Math.round(blur * baseScale)));
+    }
+
+    // 내리는 눈송이 & 바닥에 닿은 뒤 그 자리에 그대로 쌓여 남는 눈송이들
+    for (let i = 0; i < flakeCount; i++) {
+      const s1 = Math.sin(i * 17.43) * 43758.5453;
+      const s2 = Math.cos(i * 63.17) * 24634.6345;
+      const fx = s1 - Math.floor(s1);
+      const fy = s2 - Math.floor(s2);
+      const depth = 0.45 + (i % 4) * 0.22; // 0.45 ~ 1.11
+      const binVal = rawBins.length > 0 ? rawBins[i % rawBins.length] / 255 : 0.1;
+
+      const fallSpeed = 0.045 + depth * 0.032;
+      const swayFreq = 0.65 + (i % 5) * 0.14;
+      const swayAmp = 0.016 + depth * 0.01;
+      const windDir = i % 2 === 0 ? 1 : -1;
+      const getFlakeXRatio = (cycleIdx: number, tau: number): number => {
+        const baseU = fx + cycleIdx * 0.173;
+        const sway = Math.sin(tau * swayFreq + i * 1.9) * swayAmp;
+        return ((baseU + sway + tau * 0.004 * windDir + 100) % 1);
+      };
+
+      const targetLayer = i % 2;
+      const radius = (2.4 + depth * 3.8 + binVal * 4.0) * snowSize * baseScale;
+      const fHue = spec.hues[i % spec.hues.length];
+      const baseAlpha = 0.36 + depth * 0.28 + binVal * 0.22;
+
+      const rawCycle = fy + t * fallSpeed;
+      const kCur = Math.floor(rawCycle);
+      const fallU = rawCycle - kCur; // 0..1
+
+      // 1) 이미 바닥에 떨어져 그 자리에 계속 쌓여 있는 눈송이 (절대 사라지거나 다른 곳으로 점프하지 않음)
+      for (let k = 0; k < kCur; k++) {
+        const tLand = (k + 1 - fy) / fallSpeed;
+        if (tLand <= 0 || tLand > t) continue;
+        const landU = getFlakeXRatio(k, tLand);
+        const landYRatio = getSnowSurfaceYRatio(targetLayer, landU, tLand);
+
+        const sx = landU * width;
+        const sy = Math.min(height, landYRatio * height);
+        const settledRadius = (2.4 + depth * 3.4) * snowSize * baseScale;
+        fillSoftOrb(ctx, sx, sy, settledRadius * 2.1, fHue, sSat, 95, Math.min(0.65, baseAlpha * 0.9), 10);
+      }
+
+      // 2) 현재 하늘에서 떨어지고 있는 눈송이 (착지 시점 t === tLand에서 landU와 정확히 연속)
+      const tLandCur = (kCur + 1 - fy) / fallSpeed;
+      const curU = getFlakeXRatio(kCur, t);
+      const curLandU = getFlakeXRatio(kCur, tLandCur);
+      const destYRatio = getSnowSurfaceYRatio(targetLayer, curLandU, tLandCur);
+      const sx = curU * width;
+      const sy = (-0.03 + fallU * (destYRatio + 0.03)) * height;
+
+      fillSoftOrb(ctx, sx, sy, radius * 2.2, fHue, sSat, 94, baseAlpha, 12);
+    }
+
+    ctx.restore();
+  }
+
+  // 1-A9. 비 내리는 밤 (비 오는 밤하늘 + 물방울 면 + 바닥 물웅덩이 파문 글로우)
+  if (!transparentBackground && visualEffects?.rainNightEnabled) {
+    const rawBins = hologramBins;
+    const minDim = Math.min(width, height);
+    const t = currentTime;
+    const vol = Math.min(1, avgEnergy * 1.45);
+    const bass = Math.min(1, bassEnergy * 1.6);
+    const spec = getHologramPaletteSpec(visualEffects.rainNightPalette ?? 'ocean');
+    const rainSize = Math.max(0.4, Math.min(2.4, visualEffects.rainNightSize ?? 1.0));
+    const dropCount = Math.max(20, Math.min(200, Math.round(visualEffects.rainNightCount ?? 80)));
+    const rainSpeed = Math.max(0.1, Math.min(2.5, visualEffects.rainNightSpeed ?? 1.0));
+    const angleDeg = Math.max(60, Math.min(120, visualEffects.rainNightAngle ?? 90));
+    const windAngle = ((90 - angleDeg) * Math.PI) / 180; // 90도 = 수직(0 rad)
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.max(0.05, Math.min(1, visualEffects.rainNightOpacity ?? 0.65));
+
+    // 비 오는 밤하늘 대기 그라데이션 면
+    fillBackdropGradient(ctx, width, height, spec, 8 + vol * 5, 16 + bass * 6, 0.86);
+
+    // 상단 비구름 뒤 은은한 빛 번짐 면
+    fillSoftOrb(
+      ctx,
+      width * 0.5,
+      height * 0.16,
+      minDim * (0.45 + bass * 0.12),
+      spec.hues[0],
+      Math.max(30, spec.sat - 15),
+      spec.light + 10,
+      0.16 + vol * 0.12,
+      24
+    );
+
+    // 바닥 젖은 노면 반사광 면
+    const groundGrad = ctx.createLinearGradient(0, height * 0.84, 0, height);
+    const rSat = Math.max(22, Math.round(spec.sat * 0.6));
+    groundGrad.addColorStop(0, `hsla(${spec.hues[0]}, ${rSat}%, 60%, 0)`);
+    groundGrad.addColorStop(0.55, `hsla(${spec.hues[1]}, ${rSat}%, 58%, ${0.14 + bass * 0.08})`);
+    groundGrad.addColorStop(1, `hsla(${spec.hues[0]}, ${rSat}%, 72%, ${0.24 + vol * 0.1})`);
+    ctx.fillStyle = groundGrad;
+    ctx.fillRect(0, height * 0.84, width, height * 0.16);
+
+    // 떨어지는 물방울 면 (회전된 부드러운 물방울 캡슐 그라데이션 + 착지 물결 파문)
+    const rSatDrop = Math.max(28, Math.round(spec.sat * 0.72));
+    const tanWind = Math.tan(windAngle);
+    const aspectRatioInv = height / Math.max(1, width);
+
+    for (let i = 0; i < dropCount; i++) {
+      const s1 = Math.sin(i * 23.81) * 43758.5453;
+      const s2 = Math.cos(i * 59.37) * 24634.6345;
+      const fx = s1 - Math.floor(s1);
+      const fy = s2 - Math.floor(s2);
+      const depth = 0.55 + (i % 4) * 0.2; // 0.55 ~ 1.15
+      const binVal = rawBins.length > 0 ? rawBins[i % rawBins.length] / 255 : 0.12;
+
+      const dropSpeed = (0.58 + depth * 0.42) * rainSpeed;
+      const rawCycle = fy + t * dropSpeed;
+      const cycleIdx = Math.floor(rawCycle);
+      const cyclePos = rawCycle - cycleIdx; // 0..1
+
+      const baseU = (fx + cycleIdx * 0.217) % 1;
+      const groundYRatio = 0.88 + (i % 5) * 0.024; // 바닥 깊이별 착지 위치
+      const totalDriftU = tanWind * (groundYRatio + 0.08) * aspectRatioInv;
+
+      const fallFraction = 0.78;
+      if (cyclePos < fallFraction) {
+        const fallU = cyclePos / fallFraction;
+        const dx = ((baseU - fallU * totalDriftU + 100) % 1) * width;
+        const dy = (-0.08 + fallU * (groundYRatio + 0.08)) * height;
+
+        const dropW = (1.1 + depth * 1.15) * rainSize * baseScale;
+        const dropLen = (18 + depth * 18 + rainSpeed * 10 + binVal * 14) * rainSize * baseScale;
+        const dHue = spec.hues[i % spec.hues.length];
+        const dAlpha = (0.28 + depth * 0.24 + binVal * 0.22);
+
+        ctx.save();
+        ctx.translate(dx, dy);
+        ctx.rotate(windAngle);
+        const dropGrad = ctx.createLinearGradient(0, -dropLen, 0, dropW);
+        dropGrad.addColorStop(0, `hsla(${dHue}, ${rSatDrop}%, 84%, 0)`);
+        dropGrad.addColorStop(0.65, `hsla(${dHue}, ${rSatDrop}%, 86%, ${dAlpha * 0.65})`);
+        dropGrad.addColorStop(1, `hsla(${dHue}, ${rSatDrop}%, 95%, ${dAlpha})`);
+        ctx.fillStyle = dropGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -dropLen);
+        ctx.quadraticCurveTo(dropW * 1.1, -dropLen * 0.18, dropW * 0.9, 0);
+        ctx.arc(0, 0, dropW * 0.9, 0, Math.PI);
+        ctx.quadraticCurveTo(-dropW * 1.1, -dropLen * 0.18, 0, -dropLen);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // 바닥 물웅덩이에 닿아 퍼지는 부드러운 타원 물결/물보라 면
+        const splashU = (cyclePos - fallFraction) / (1 - fallFraction);
+        const sx = ((baseU - totalDriftU + 100) % 1) * width;
+        const sy = groundYRatio * height;
+        const rippleR = (8 + depth * 12 + splashU * 22) * rainSize * baseScale;
+        const sHue = spec.hues[i % spec.hues.length];
+        const sAlpha = (1 - splashU) * (0.34 + binVal * 0.25);
+
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.scale(1, 0.28);
+        fillSoftOrb(ctx, 0, 0, rippleR, sHue, rSatDrop, 90, sAlpha, 18);
+        ctx.restore();
+      }
     }
 
     ctx.restore();

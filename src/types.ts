@@ -89,6 +89,8 @@ export interface VideoClip {
   blur?: number; // 0 ~ 24 (px)
   playbackRate?: number; // 0.25 ~ 4.0 (기본 1.0)
   fitToFrame: boolean; // true: 프레임에 맞추기(cover), false: 원본 비율 유지(contain)
+  imageZoom?: 'none' | 'in' | 'out'; // 이미지 클립 줌인/줌아웃 애니메이션 (일정 속도)
+  imageZoomMax?: number; // 1.05 ~ 2.5 (기본 1.4)
   thumbnailUrl?: string;
   transitionIn?: VideoClipTransition;
   transitionOut?: VideoClipTransition;
@@ -116,6 +118,21 @@ export interface VisualEffectsConfig {
   hologramEnabled: boolean;
   hologramOpacity: number; // 0.05 ~ 1.0
   hologramPalette?: HologramPalette;
+  auroraCurtainEnabled?: boolean;
+  auroraCurtainOpacity?: number; // 0.05 ~ 1.0
+  auroraCurtainPalette?: HologramPalette;
+  snowNightEnabled?: boolean;
+  snowNightOpacity?: number; // 0.05 ~ 1.0
+  snowNightPalette?: HologramPalette;
+  snowNightSize?: number; // 0.4 ~ 2.4
+  snowNightCount?: number; // 15 ~ 150
+  rainNightEnabled?: boolean;
+  rainNightOpacity?: number; // 0.05 ~ 1.0
+  rainNightPalette?: HologramPalette;
+  rainNightSize?: number; // 0.4 ~ 2.4 (빗방울 굵기)
+  rainNightCount?: number; // 20 ~ 200 (빗방울 개수)
+  rainNightSpeed?: number; // 0.1 ~ 2.5 (비 내리는 속도)
+  rainNightAngle?: number; // 60 ~ 120 (빗방울 각도, 기본 90도)
   underwaterEnabled?: boolean;
   underwaterOpacity?: number; // 0.05 ~ 1.0
   underwaterPalette?: HologramPalette;

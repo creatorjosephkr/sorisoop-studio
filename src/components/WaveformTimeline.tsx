@@ -1250,6 +1250,49 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                   </label>
                 )}
 
+                {selClip.mediaType === 'image' && (
+                  <>
+                    <label className="flex items-center gap-1.5 text-[10px] text-emerald-200/80">
+                      <span>줌</span>
+                      <select
+                        value={selClip.imageZoom ?? 'none'}
+                        onChange={(e) =>
+                          onUpdateClip(selClip.id, {
+                            imageZoom: e.target.value as 'none' | 'in' | 'out',
+                          })
+                        }
+                        className="rounded border border-emerald-700/70 bg-slate-900 px-1.5 py-0.5 text-[10px] text-emerald-200 focus:border-emerald-400 focus:outline-none"
+                        title="사진 줌인/줌아웃 애니메이션 (사진 길이에 무관하게 일정 속도 유지)"
+                      >
+                        <option value="none">없음</option>
+                        <option value="in">줌인</option>
+                        <option value="out">줌아웃</option>
+                      </select>
+                    </label>
+                    {(selClip.imageZoom === 'in' || selClip.imageZoom === 'out') && (
+                      <label className="flex items-center gap-1 text-[10px] text-emerald-200/80">
+                        <span>최대</span>
+                        <select
+                          value={String(selClip.imageZoomMax ?? 1.4)}
+                          onChange={(e) =>
+                            onUpdateClip(selClip.id, {
+                              imageZoomMax: Number(e.target.value),
+                            })
+                          }
+                          className="rounded border border-emerald-700/70 bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] text-emerald-200 focus:border-emerald-400 focus:outline-none"
+                          title="줌 최대 배율 (기본 1.4x)"
+                        >
+                          {[1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0, 2.5].map((z) => (
+                            <option key={z} value={String(z)}>
+                              {z}x
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </>
+                )}
+
                 <button
                   type="button"
                   onClick={() => onUpdateClip(selClip.id, { fitToFrame: !selClip.fitToFrame })}
@@ -1728,6 +1771,12 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                               {Number((clip.playbackRate ?? 1).toFixed(2))}x
                             </span>
                           )}
+                          {clip.mediaType === 'image' &&
+                            (clip.imageZoom === 'in' || clip.imageZoom === 'out') && (
+                              <span className="ml-1 rounded bg-cyan-400/20 px-1 text-[8px] font-bold text-cyan-200">
+                                {clip.imageZoom === 'in' ? '줌인' : '줌아웃'}
+                              </span>
+                            )}
                         </p>
                       </div>
 
@@ -2503,6 +2552,73 @@ export const WaveformTimeline: React.FC<WaveformTimelineProps> = ({
                       }
                       className="mt-1.5 w-full accent-emerald-400"
                     />
+                  </div>
+                </>
+              )}
+
+              {clip.mediaType === 'image' && (
+                <>
+                  <div className="my-1 border-t border-slate-800" />
+                  <div className="px-2 py-1">
+                    <div className="mb-1 flex items-center justify-between text-[10px] text-slate-400">
+                      <span>줌 애니메이션</span>
+                      <span className="text-cyan-300">
+                        {clip.imageZoom === 'in'
+                          ? '줌인'
+                          : clip.imageZoom === 'out'
+                            ? '줌아웃'
+                            : '없음'}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(
+                        [
+                          { id: 'none', label: '없음' },
+                          { id: 'in', label: '줌인' },
+                          { id: 'out', label: '줌아웃' },
+                        ] as const
+                      ).map((opt) => {
+                        const active = (clip.imageZoom ?? 'none') === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              onUpdateClip(clip.id, { imageZoom: opt.id });
+                              setSourceContextMenu(null);
+                            }}
+                            className={`flex-1 rounded px-1.5 py-1 text-[10px] transition ${
+                              active
+                                ? 'bg-cyan-500 font-bold text-slate-950'
+                                : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(clip.imageZoom === 'in' || clip.imageZoom === 'out') && (
+                      <div className="mt-2">
+                        <div className="mb-0.5 flex items-center justify-between text-[10px] text-slate-400">
+                          <span>최대 배율</span>
+                          <span className="font-mono text-cyan-300">
+                            {Number((clip.imageZoomMax ?? 1.4).toFixed(2))}x
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1.05}
+                          max={2.5}
+                          step={0.05}
+                          value={clip.imageZoomMax ?? 1.4}
+                          onChange={(e) =>
+                            onUpdateClip(clip.id, { imageZoomMax: Number(e.target.value) })
+                          }
+                          className="w-full accent-cyan-400"
+                        />
+                      </div>
+                    )}
                   </div>
                 </>
               )}

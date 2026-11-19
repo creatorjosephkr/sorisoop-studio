@@ -1,6 +1,6 @@
 {
   "name": "sorisoop-lyrics",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "로컬 Whisper 가사 싱크 & 무료 한글 폰트 내장 뮤직비디오 제작 스튜디오 (Windows / macOS)",
   "main": "dist-electron/main.js",
   "scripts": {

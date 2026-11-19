@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Download,
@@ -117,6 +117,7 @@ interface PersistedSettings {
   previewHeight?: number;
   background?: BackgroundMedia | null;
   appTheme?: AppTheme;
+  hologramDefaultV102Applied?: boolean;
 }
 
 function loadPersistedSettings(): PersistedSettings {
@@ -131,6 +132,9 @@ function loadPersistedSettings(): PersistedSettings {
 
 type HologramEnabledKey =
   | 'hologramEnabled'
+  | 'auroraCurtainEnabled'
+  | 'snowNightEnabled'
+  | 'rainNightEnabled'
   | 'underwaterEnabled'
   | 'nebulaEnabled'
   | 'skyCloudEnabled'
@@ -139,6 +143,9 @@ type HologramEnabledKey =
 
 type HologramOpacityKey =
   | 'hologramOpacity'
+  | 'auroraCurtainOpacity'
+  | 'snowNightOpacity'
+  | 'rainNightOpacity'
   | 'underwaterOpacity'
   | 'nebulaOpacity'
   | 'skyCloudOpacity'
@@ -147,6 +154,9 @@ type HologramOpacityKey =
 
 type HologramPaletteKey =
   | 'hologramPalette'
+  | 'auroraCurtainPalette'
+  | 'snowNightPalette'
+  | 'rainNightPalette'
   | 'underwaterPalette'
   | 'nebulaPalette'
   | 'skyCloudPalette'
@@ -168,6 +178,30 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     paletteKey: 'hologramPalette',
     defaultOpacity: 0.38,
     defaultPalette: 'aurora',
+  },
+  {
+    label: '오로라 (북극광)',
+    enabledKey: 'auroraCurtainEnabled',
+    opacityKey: 'auroraCurtainOpacity',
+    paletteKey: 'auroraCurtainPalette',
+    defaultOpacity: 0.6,
+    defaultPalette: 'aurora',
+  },
+  {
+    label: '눈 내리는 밤',
+    enabledKey: 'snowNightEnabled',
+    opacityKey: 'snowNightOpacity',
+    paletteKey: 'snowNightPalette',
+    defaultOpacity: 0.65,
+    defaultPalette: 'moonlight',
+  },
+  {
+    label: '비 내리는 밤',
+    enabledKey: 'rainNightEnabled',
+    opacityKey: 'rainNightOpacity',
+    paletteKey: 'rainNightPalette',
+    defaultOpacity: 0.65,
+    defaultPalette: 'ocean',
   },
   {
     label: '물 속 심해 빛결',
@@ -440,23 +474,39 @@ export function App() {
   const pendingMediaModeRef = useRef<'append' | 'insert'>('append');
   const [visualEffects, setVisualEffects] = useState<VisualEffectsConfig>(() => {
     const initVe = initialSettings.visualEffects;
+    const applyHoloDefaults = !initialSettings.hologramDefaultV102Applied;
     return {
-      hologramEnabled: initVe?.hologramEnabled ?? false,
+      hologramEnabled: applyHoloDefaults ? true : (initVe?.hologramEnabled ?? true),
       hologramOpacity: initVe?.hologramOpacity ?? 0.38,
       hologramPalette: initVe?.hologramPalette ?? 'aurora',
-      underwaterEnabled: initVe?.underwaterEnabled ?? false,
+      auroraCurtainEnabled: applyHoloDefaults ? false : (initVe?.auroraCurtainEnabled ?? false),
+      auroraCurtainOpacity: initVe?.auroraCurtainOpacity ?? 0.6,
+      auroraCurtainPalette: initVe?.auroraCurtainPalette ?? 'aurora',
+      snowNightEnabled: applyHoloDefaults ? false : (initVe?.snowNightEnabled ?? false),
+      snowNightOpacity: initVe?.snowNightOpacity ?? 0.65,
+      snowNightPalette: initVe?.snowNightPalette ?? 'moonlight',
+      snowNightSize: initVe?.snowNightSize ?? 1.0,
+      snowNightCount: initVe?.snowNightCount ?? 52,
+      rainNightEnabled: applyHoloDefaults ? false : (initVe?.rainNightEnabled ?? false),
+      rainNightOpacity: initVe?.rainNightOpacity ?? 0.65,
+      rainNightPalette: initVe?.rainNightPalette ?? 'ocean',
+      rainNightSize: initVe?.rainNightSize ?? 1.0,
+      rainNightCount: initVe?.rainNightCount ?? 80,
+      rainNightSpeed: initVe?.rainNightSpeed ?? 1.0,
+      rainNightAngle: initVe?.rainNightAngle ?? 90,
+      underwaterEnabled: applyHoloDefaults ? false : (initVe?.underwaterEnabled ?? false),
       underwaterOpacity: initVe?.underwaterOpacity ?? 0.55,
       underwaterPalette: initVe?.underwaterPalette ?? 'ocean',
-      nebulaEnabled: initVe?.nebulaEnabled ?? false,
+      nebulaEnabled: applyHoloDefaults ? false : (initVe?.nebulaEnabled ?? false),
       nebulaOpacity: initVe?.nebulaOpacity ?? 0.6,
       nebulaPalette: initVe?.nebulaPalette ?? 'cosmic',
-      skyCloudEnabled: initVe?.skyCloudEnabled ?? false,
+      skyCloudEnabled: applyHoloDefaults ? false : (initVe?.skyCloudEnabled ?? false),
       skyCloudOpacity: initVe?.skyCloudOpacity ?? 0.6,
       skyCloudPalette: initVe?.skyCloudPalette ?? 'sunset',
-      plasmaEnabled: initVe?.plasmaEnabled ?? false,
+      plasmaEnabled: applyHoloDefaults ? false : (initVe?.plasmaEnabled ?? false),
       plasmaOpacity: initVe?.plasmaOpacity ?? 0.55,
       plasmaPalette: initVe?.plasmaPalette ?? 'aurora',
-      prismParticlesEnabled: initVe?.prismParticlesEnabled ?? false,
+      prismParticlesEnabled: applyHoloDefaults ? false : (initVe?.prismParticlesEnabled ?? false),
       prismParticlesOpacity: initVe?.prismParticlesOpacity ?? 0.6,
       prismParticlesPalette: initVe?.prismParticlesPalette ?? 'aurora',
       hologramSmoothing: initVe?.hologramSmoothing ?? 0.9,
@@ -649,6 +699,7 @@ export function App() {
           ? background
           : null,
       appTheme,
+      hologramDefaultV102Applied: true,
     };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(payload));
   }, [
@@ -2672,65 +2723,196 @@ export function App() {
                     const opacityVal = visualEffects[item.opacityKey] ?? item.defaultOpacity;
                     const activePalette = visualEffects[item.paletteKey] ?? item.defaultPalette;
                     return (
-                      <Fragment key={item.enabledKey}>
-                        <SettingRow label={item.label}>
+                      <SettingRow
+                        key={item.enabledKey}
+                        align="start"
+                        label={
+                          <span
+                            className={
+                              isEnabled ? 'font-semibold text-slate-200' : 'text-slate-400'
+                            }
+                          >
+                            {item.label}
+                          </span>
+                        }
+                      >
+                        <div className="space-y-2">
                           <ToggleControl
                             checked={isEnabled}
                             onChange={(checked) =>
                               setVisualEffects((v) => ({ ...v, [item.enabledKey]: checked }))
                             }
                           />
-                        </SettingRow>
 
-                        {isEnabled && (
-                          <>
-                            <SettingRow label="투명도">
-                              <SliderControl
-                                min={0.05}
-                                max={1}
-                                step={0.05}
-                                value={opacityVal}
-                                valueLabel={`${Math.round(opacityVal * 100)}%`}
-                                onChange={(val) =>
-                                  setVisualEffects((v) => ({ ...v, [item.opacityKey]: val }))
-                                }
-                              />
-                            </SettingRow>
-                            <SettingRow label="색상 테마">
-                              <div className="grid grid-cols-3 gap-1">
-                                {HOLOGRAM_PALETTES.map((pal) => {
-                                  const selected = activePalette === pal.id;
-                                  return (
-                                    <button
-                                      key={pal.id}
-                                      type="button"
-                                      onClick={() =>
-                                        setVisualEffects((v) => ({
-                                          ...v,
-                                          [item.paletteKey]: pal.id,
-                                        }))
-                                      }
-                                      className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition ${
-                                        selected
-                                          ? 'bg-cyan-500 text-slate-950 shadow-sm'
-                                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                                      }`}
-                                    >
-                                      <span
-                                        className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/25"
-                                        style={{
-                                          background: `linear-gradient(135deg, ${pal.swatch[0]}, ${pal.swatch[1]})`,
-                                        }}
-                                      />
-                                      <span className="truncate">{pal.label}</span>
-                                    </button>
-                                  );
-                                })}
+                          {isEnabled && (
+                            <div className="space-y-2 rounded-lg border border-slate-800/80 bg-slate-900/60 p-2">
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-medium text-slate-400">
+                                  투명도
+                                </div>
+                                <SliderControl
+                                  min={0.05}
+                                  max={1}
+                                  step={0.05}
+                                  value={opacityVal}
+                                  valueLabel={`${Math.round(opacityVal * 100)}%`}
+                                  onChange={(val) =>
+                                    setVisualEffects((v) => ({ ...v, [item.opacityKey]: val }))
+                                  }
+                                />
                               </div>
-                            </SettingRow>
-                          </>
-                        )}
-                      </Fragment>
+
+                              {item.enabledKey === 'snowNightEnabled' && (
+                                <>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      눈 덩이 크기
+                                    </div>
+                                    <SliderControl
+                                      min={0.4}
+                                      max={2.4}
+                                      step={0.1}
+                                      value={visualEffects.snowNightSize ?? 1.0}
+                                      valueLabel={`${Math.round(
+                                        (visualEffects.snowNightSize ?? 1.0) * 100
+                                      )}%`}
+                                      onChange={(snowNightSize) =>
+                                        setVisualEffects((v) => ({ ...v, snowNightSize }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      눈 수량
+                                    </div>
+                                    <SliderControl
+                                      min={15}
+                                      max={150}
+                                      step={5}
+                                      value={visualEffects.snowNightCount ?? 52}
+                                      valueLabel={`${Math.round(
+                                        visualEffects.snowNightCount ?? 52
+                                      )}개`}
+                                      onChange={(snowNightCount) =>
+                                        setVisualEffects((v) => ({ ...v, snowNightCount }))
+                                      }
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              {item.enabledKey === 'rainNightEnabled' && (
+                                <>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      빗방울 굵기
+                                    </div>
+                                    <SliderControl
+                                      min={0.4}
+                                      max={2.4}
+                                      step={0.1}
+                                      value={visualEffects.rainNightSize ?? 1.0}
+                                      valueLabel={`${Math.round(
+                                        (visualEffects.rainNightSize ?? 1.0) * 100
+                                      )}%`}
+                                      onChange={(rainNightSize) =>
+                                        setVisualEffects((v) => ({ ...v, rainNightSize }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      빗방울 개수
+                                    </div>
+                                    <SliderControl
+                                      min={20}
+                                      max={200}
+                                      step={5}
+                                      value={visualEffects.rainNightCount ?? 80}
+                                      valueLabel={`${Math.round(
+                                        visualEffects.rainNightCount ?? 80
+                                      )}개`}
+                                      onChange={(rainNightCount) =>
+                                        setVisualEffects((v) => ({ ...v, rainNightCount }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      비 내리는 속도
+                                    </div>
+                                    <SliderControl
+                                      min={0.1}
+                                      max={2.5}
+                                      step={0.1}
+                                      value={visualEffects.rainNightSpeed ?? 1.0}
+                                      valueLabel={`${(visualEffects.rainNightSpeed ?? 1.0).toFixed(
+                                        1
+                                      )}x`}
+                                      onChange={(rainNightSpeed) =>
+                                        setVisualEffects((v) => ({ ...v, rainNightSpeed }))
+                                      }
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] font-medium text-slate-400">
+                                      빗방울 각도
+                                    </div>
+                                    <SliderControl
+                                      min={60}
+                                      max={120}
+                                      step={1}
+                                      value={visualEffects.rainNightAngle ?? 90}
+                                      valueLabel={`${Math.round(
+                                        visualEffects.rainNightAngle ?? 90
+                                      )}°`}
+                                      onChange={(rainNightAngle) =>
+                                        setVisualEffects((v) => ({ ...v, rainNightAngle }))
+                                      }
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-medium text-slate-400">
+                                  색상 테마
+                                </div>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {HOLOGRAM_PALETTES.map((pal) => {
+                                    const selected = activePalette === pal.id;
+                                    return (
+                                      <button
+                                        key={pal.id}
+                                        type="button"
+                                        onClick={() =>
+                                          setVisualEffects((v) => ({
+                                            ...v,
+                                            [item.paletteKey]: pal.id,
+                                          }))
+                                        }
+                                        className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition ${
+                                          selected
+                                            ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                        }`}
+                                      >
+                                        <span
+                                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/25"
+                                          style={{
+                                            background: `linear-gradient(135deg, ${pal.swatch[0]}, ${pal.swatch[1]})`,
+                                          }}
+                                        />
+                                        <span className="truncate">{pal.label}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </SettingRow>
                     );
                   })}
 
