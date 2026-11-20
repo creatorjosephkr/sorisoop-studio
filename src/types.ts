@@ -159,7 +159,15 @@ export interface VisualEffectsConfig {
   kaleidoscopeOpacity?: number; // 0.05 ~ 1.0
   neonGridEnabled?: boolean;
   neonGridOpacity?: number; // 0.05 ~ 1.0
-  hologramSmoothing?: number; // 0 ~ 0.94 (음악 반응형 홀로그램 부드러운 움직임)
+  hologramSmoothing?: number; // 0 ~ 0.94 (음악 반응형 홀로그램 부드러운 움직임 - 오로라 구름 띠 / 기본값)
+  auroraCurtainSmoothing?: number;
+  snowNightSmoothing?: number;
+  rainNightSmoothing?: number;
+  underwaterSmoothing?: number;
+  nebulaSmoothing?: number;
+  skyCloudSmoothing?: number;
+  plasmaSmoothing?: number;
+  prismParticlesSmoothing?: number;
   spectrumEnabled: boolean;
   spectrumMode: SpectrumMode;
   spectrumOpacity: number; // 0.05 ~ 1.0
@@ -174,10 +182,11 @@ export interface VisualEffectsConfig {
   lyricLedMeterEnabled?: boolean;
   ledMeterPosY?: number; // 0.08 ~ 0.92
   ledMeterColumns?: number; // 4 ~ 16
-  ledMeterHeight?: number; // 0.5 ~ 2.4
+  ledMeterHeight?: number; // 0.5 ~ 5.0
   ledMeterThickness?: number; // 0.5 ~ 2.2
   ledMeterOpacity?: number; // 0.05 ~ 1.0
   ledMeterSmoothing?: number; // 0 ~ 0.92
+  ledMeterColor?: string; // 'auto' | hex
 }
 
 export const DEFAULT_PRISM_RING_SETTINGS = {
@@ -207,6 +216,7 @@ export const DEFAULT_LED_METER_SETTINGS = {
   ledMeterThickness: 1.0,
   ledMeterOpacity: 0.95,
   ledMeterSmoothing: 0.68,
+  ledMeterColor: 'auto',
 };
 
 export type TextTransitionType =
@@ -267,6 +277,20 @@ export interface BundledFont {
   weight: string;
 }
 
+export type BackgroundLibraryCategory = 'image' | 'video';
+export type BackgroundLibraryRatio = '16:9' | '9:16';
+
+export interface BackgroundLibraryItem {
+  id: string;
+  name: string;
+  mediaType: BackgroundLibraryCategory;
+  aspectRatio: BackgroundLibraryRatio;
+  url: string;
+  filePath?: string;
+  isBuiltIn?: boolean;
+  createdAt: number;
+}
+
 export interface UpdateCheckResult {
   status: 'update-available' | 'up-to-date' | 'error';
   currentVersion: string;
@@ -310,6 +334,22 @@ export interface ElectronAPI {
       fileUrl: string;
     }>
   >;
+  registerBgLibraryFiles?: (options?: {
+    mediaType?: 'image' | 'video' | 'all';
+  }) => Promise<
+    Array<{
+      filePath: string;
+      name: string;
+      mediaType: 'image' | 'video';
+      fileUrl: string;
+    }>
+  >;
+  deleteBgLibraryFile?: (filePath: string) => Promise<boolean>;
+  saveMediaFile?: (options: {
+    defaultName: string;
+    sourcePath?: string;
+    dataBytes?: Uint8Array;
+  }) => Promise<string | null>;
   openProjectFile?: () => Promise<{
     filePath: string;
     name: string;

@@ -620,6 +620,93 @@ ipcMain.handle('dialog:open-backgrounds', async () => {
   return result.filePaths.map(mapBackgroundFileResult);
 });
 
+ipcMain.handle(
+  'bgLibrary:register-files',
+  async (_event, options?: { mediaType?: 'image' | 'video' | 'all' }) => {
+    if (!mainWindow) return [];
+    const kind = options?.mediaType ?? 'all';
+    const filters =
+      kind === 'image'
+        ? [{ name: '이미지 파일', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+        : kind === 'video'
+          ? [{ name: '영상 파일', extensions: ['mp4', 'mov', 'webm', 'mkv'] }]
+          : [
+              {
+                name: '배경 이미지/영상 파일',
+                extensions: ['png', 'jpg', 'jpeg', 'webp', 'mp4', 'mov', 'webm', 'mkv'],
+              },
+            ];
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '배경장면 소스 등록 (복수 선택 가능)',
+      properties: ['openFile', 'multiSelections'],
+      filters,
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+
+    const libDir = path.join(app.getPath('userData'), 'background-library');
+    await fs.promises.mkdir(libDir, { recursive: true });
+
+    const registered = [];
+    for (const srcPath of result.filePaths) {
+      const ext = path.extname(srcPath) || '';
+      const originalName = path.basename(srcPath);
+      const destName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const destPath = path.join(libDir, destName);
+      await fs.promises.copyFile(srcPath, destPath);
+      const mapped = mapBackgroundFileResult(destPath);
+      registered.push({
+        ...mapped,
+        name: originalName,
+      });
+    }
+    return registered;
+  }
+);
+
+ipcMain.handle('bgLibrary:delete-file', async (_event, filePath: string) => {
+  if (!filePath) return false;
+  const libDir = path.resolve(app.getPath('userData'), 'background-library');
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(libDir + path.sep)) return false;
+  try {
+    await fs.promises.unlink(resolved);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle(
+  'dialog:save-media-file',
+  async (
+    _event,
+    {
+      defaultName,
+      sourcePath,
+      dataBytes,
+    }: { defaultName: string; sourcePath?: string; dataBytes?: Uint8Array }
+  ) => {
+    if (!mainWindow) return null;
+    const ext = path.extname(defaultName).replace(/^\./, '').toLowerCase() || 'png';
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: '배경 파일 PC에 저장',
+      defaultPath: defaultName,
+      filters: [{ name: `${ext.toUpperCase()} 파일`, extensions: [ext] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    if (sourcePath && fs.existsSync(sourcePath)) {
+      await fs.promises.copyFile(sourcePath, result.filePath);
+      return result.filePath;
+    }
+    if (dataBytes) {
+      await fs.promises.writeFile(result.filePath, Buffer.from(dataBytes));
+      return result.filePath;
+    }
+    return null;
+  }
+);
+
 ipcMain.handle('dialog:open-project', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {

@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { ExportModal } from './components/ExportModal';
+import { BackgroundLibraryPanel } from './components/BackgroundLibraryPanel';
 import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { SponsorIcon, SponsorModal } from './components/SponsorModal';
 import { UpdateModal } from './components/UpdateModal';
@@ -163,11 +164,23 @@ type HologramPaletteKey =
   | 'plasmaPalette'
   | 'prismParticlesPalette';
 
+type HologramSmoothingKey =
+  | 'hologramSmoothing'
+  | 'auroraCurtainSmoothing'
+  | 'snowNightSmoothing'
+  | 'rainNightSmoothing'
+  | 'underwaterSmoothing'
+  | 'nebulaSmoothing'
+  | 'skyCloudSmoothing'
+  | 'plasmaSmoothing'
+  | 'prismParticlesSmoothing';
+
 const HOLOGRAM_STYLE_OPTIONS: Array<{
   label: string;
   enabledKey: HologramEnabledKey;
   opacityKey: HologramOpacityKey;
   paletteKey: HologramPaletteKey;
+  smoothingKey: HologramSmoothingKey;
   defaultOpacity: number;
   defaultPalette: HologramPalette;
 }> = [
@@ -176,6 +189,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'hologramEnabled',
     opacityKey: 'hologramOpacity',
     paletteKey: 'hologramPalette',
+    smoothingKey: 'hologramSmoothing',
     defaultOpacity: 0.38,
     defaultPalette: 'aurora',
   },
@@ -184,6 +198,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'auroraCurtainEnabled',
     opacityKey: 'auroraCurtainOpacity',
     paletteKey: 'auroraCurtainPalette',
+    smoothingKey: 'auroraCurtainSmoothing',
     defaultOpacity: 0.6,
     defaultPalette: 'aurora',
   },
@@ -192,6 +207,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'snowNightEnabled',
     opacityKey: 'snowNightOpacity',
     paletteKey: 'snowNightPalette',
+    smoothingKey: 'snowNightSmoothing',
     defaultOpacity: 0.65,
     defaultPalette: 'moonlight',
   },
@@ -200,6 +216,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'rainNightEnabled',
     opacityKey: 'rainNightOpacity',
     paletteKey: 'rainNightPalette',
+    smoothingKey: 'rainNightSmoothing',
     defaultOpacity: 0.65,
     defaultPalette: 'ocean',
   },
@@ -208,6 +225,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'underwaterEnabled',
     opacityKey: 'underwaterOpacity',
     paletteKey: 'underwaterPalette',
+    smoothingKey: 'underwaterSmoothing',
     defaultOpacity: 0.55,
     defaultPalette: 'ocean',
   },
@@ -216,6 +234,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'nebulaEnabled',
     opacityKey: 'nebulaOpacity',
     paletteKey: 'nebulaPalette',
+    smoothingKey: 'nebulaSmoothing',
     defaultOpacity: 0.6,
     defaultPalette: 'cosmic',
   },
@@ -224,6 +243,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'skyCloudEnabled',
     opacityKey: 'skyCloudOpacity',
     paletteKey: 'skyCloudPalette',
+    smoothingKey: 'skyCloudSmoothing',
     defaultOpacity: 0.6,
     defaultPalette: 'sunset',
   },
@@ -232,6 +252,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'plasmaEnabled',
     opacityKey: 'plasmaOpacity',
     paletteKey: 'plasmaPalette',
+    smoothingKey: 'plasmaSmoothing',
     defaultOpacity: 0.55,
     defaultPalette: 'aurora',
   },
@@ -240,6 +261,7 @@ const HOLOGRAM_STYLE_OPTIONS: Array<{
     enabledKey: 'prismParticlesEnabled',
     opacityKey: 'prismParticlesOpacity',
     paletteKey: 'prismParticlesPalette',
+    smoothingKey: 'prismParticlesSmoothing',
     defaultOpacity: 0.6,
     defaultPalette: 'aurora',
   },
@@ -530,11 +552,15 @@ export function App() {
       ledMeterOpacity: initVe?.ledMeterOpacity ?? DEFAULT_LED_METER_SETTINGS.ledMeterOpacity,
       ledMeterSmoothing:
         initVe?.ledMeterSmoothing ?? DEFAULT_LED_METER_SETTINGS.ledMeterSmoothing,
+      ledMeterColor: initVe?.ledMeterColor ?? DEFAULT_LED_METER_SETTINGS.ledMeterColor,
     };
   });
   const [spectrumBins, setSpectrumBins] = useState<Uint8Array | null>(null);
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
   const [rightTab, setRightTab] = useState<RightTab>('lyrics');
+  const [visualTab, setVisualTab] = useState<'hologram' | 'spectrum' | 'ledMeter' | 'scenes'>(
+    'hologram'
+  );
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
@@ -1575,6 +1601,19 @@ export function App() {
     } finally {
       setIsWhisperRunning(false);
       setWhisperProgress(null);
+    }
+  };
+
+  const handleSaveLyricsModal = () => {
+    setShowLyricsModal(false);
+    if (
+      audioBufferRef.current &&
+      pureLineCount > 0 &&
+      segments.length === 0 &&
+      !isWhisperRunning
+    ) {
+      setRightTab('lyrics');
+      void handleRunWhisperSync();
     }
   };
 
@@ -2715,13 +2754,42 @@ export function App() {
             )}
 
             {rightTab === 'background' && (
-              <div className="h-full min-h-0 min-w-0 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable] text-xs">
-                {/* 음악 반응형 면 채우기 홀로그램 */}
-                <SettingSection title="홀로그램">
+              <div className="flex h-full min-h-0 min-w-0 flex-col gap-2.5 text-xs">
+                {/* 비주얼 효과 하위 탭 메뉴 */}
+                <div className="grid shrink-0 grid-cols-4 gap-1 rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+                  {(
+                    [
+                      { id: 'hologram', label: '홀로그램' },
+                      { id: 'spectrum', label: '스펙트럼' },
+                      { id: 'ledMeter', label: '레벨메터' },
+                      { id: 'scenes', label: '배경장면' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setVisualTab(tab.id)}
+                      className={`rounded-lg py-1.5 text-[11px] font-semibold transition ${
+                        visualTab === tab.id
+                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overflow-x-hidden pr-3 [scrollbar-gutter:stable]">
+                  {/* 음악 반응형 면 채우기 홀로그램 */}
+                  {visualTab === 'hologram' && (
+                    <SettingSection title="홀로그램">
                   {HOLOGRAM_STYLE_OPTIONS.map((item) => {
                     const isEnabled = Boolean(visualEffects[item.enabledKey]);
                     const opacityVal = visualEffects[item.opacityKey] ?? item.defaultOpacity;
                     const activePalette = visualEffects[item.paletteKey] ?? item.defaultPalette;
+                    const smoothingVal =
+                      visualEffects[item.smoothingKey] ?? visualEffects.hologramSmoothing ?? 0.9;
                     return (
                       <SettingRow
                         key={item.enabledKey}
@@ -2909,32 +2977,36 @@ export function App() {
                                   })}
                                 </div>
                               </div>
+
+                              <div className="space-y-1">
+                                <div className="text-[10px] font-medium text-slate-400">
+                                  부드러운 움직임
+                                </div>
+                                <SliderControl
+                                  min={0}
+                                  max={0.94}
+                                  step={0.02}
+                                  value={smoothingVal}
+                                  valueLabel={`${Math.round(smoothingVal * 100)}%`}
+                                  onChange={(val) =>
+                                    setVisualEffects((v) => ({
+                                      ...v,
+                                      [item.smoothingKey]: val,
+                                    }))
+                                  }
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
                       </SettingRow>
                     );
                   })}
-
-                  {HOLOGRAM_STYLE_OPTIONS.some((item) => Boolean(visualEffects[item.enabledKey])) && (
-                    <SettingRow label="부드러운 움직임">
-                      <SliderControl
-                        min={0}
-                        max={0.94}
-                        step={0.02}
-                        value={visualEffects.hologramSmoothing ?? 0.9}
-                        valueLabel={`${Math.round(
-                          (visualEffects.hologramSmoothing ?? 0.9) * 100
-                        )}%`}
-                        onChange={(hologramSmoothing) =>
-                          setVisualEffects((v) => ({ ...v, hologramSmoothing }))
-                        }
-                      />
-                    </SettingRow>
-                  )}
                 </SettingSection>
+                  )}
 
-                {/* 스펙트럼 */}
+                  {/* 스펙트럼 */}
+                  {visualTab === 'spectrum' && (
                 <SettingSection
                   title="스펙트럼"
                   action={
@@ -3165,8 +3237,10 @@ export function App() {
                     </>
                   )}
                 </SettingSection>
+                  )}
 
-                {/* 레벨메터 */}
+                  {/* 레벨메터 */}
+                  {visualTab === 'ledMeter' && (
                 <SettingSection
                   title="레벨메터"
                   action={
@@ -3240,7 +3314,7 @@ export function App() {
                       <SettingRow label="기둥 높이">
                         <SliderControl
                           min={0.5}
-                          max={2.4}
+                          max={5.0}
                           step={0.05}
                           value={
                             visualEffects.ledMeterHeight ??
@@ -3312,11 +3386,62 @@ export function App() {
                           }
                         />
                       </SettingRow>
+                      <SettingRow label="색상">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVisualEffects((v) => ({
+                                ...v,
+                                ledMeterColor: 'auto',
+                              }))
+                            }
+                            className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+                              (visualEffects.ledMeterColor ?? 'auto') === 'auto'
+                                ? 'bg-indigo-600/80 border-indigo-400 text-white'
+                                : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700'
+                            }`}
+                          >
+                            자동(기본)
+                          </button>
+                          <input
+                            type="color"
+                            value={
+                              visualEffects.ledMeterColor &&
+                              visualEffects.ledMeterColor !== 'auto'
+                                ? visualEffects.ledMeterColor
+                                : '#34d399'
+                            }
+                            onChange={(e) =>
+                              setVisualEffects((v) => ({
+                                ...v,
+                                ledMeterColor: e.target.value,
+                              }))
+                            }
+                            className="w-7 h-6 rounded cursor-pointer bg-transparent border border-zinc-700"
+                            title="레벨메터 기본 색상 (Peak 영역으로 갈수록 붉게 변함)"
+                          />
+                        </div>
+                      </SettingRow>
                     </>
                   )}
                 </SettingSection>
+                  )}
 
-                {background && (
+                  {/* 배경장면 라이브러리 */}
+                  {visualTab === 'scenes' && (
+                    <>
+                      <BackgroundLibraryPanel
+                        currentAspectRatio={aspectRatio}
+                        onAddToTimeline={(item) =>
+                          addMediaListToVideoTrack(
+                            [{ ...item, filePath: item.filePath ?? '' }],
+                            'append'
+                          )
+                        }
+                      />
+
+                      {background && (
                   <SettingSection
                     title="배경 미디어"
                     action={
@@ -3378,7 +3503,10 @@ export function App() {
                       />
                     </SettingRow>
                   </SettingSection>
-                )}
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
@@ -3429,7 +3557,7 @@ export function App() {
               <span className="text-cyan-300">인식 대상 순수 가사: {pureLineCount}줄</span>
               <button
                 type="button"
-                onClick={() => setShowLyricsModal(false)}
+                onClick={handleSaveLyricsModal}
                 className="rounded-lg bg-cyan-500 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-400"
               >
                 저장 후 닫기

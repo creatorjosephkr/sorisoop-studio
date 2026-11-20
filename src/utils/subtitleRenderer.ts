@@ -110,8 +110,48 @@ function fillBlurredSurface(
 
 const spectrumSmoothMap = new WeakMap<
   CanvasRenderingContext2D,
-  { bins: Float32Array; samples: Float32Array; ledLevels: Float32Array; hologramBins: Float32Array }
+  {
+    bins: Float32Array;
+    samples: Float32Array;
+    ledLevels: Float32Array;
+    ledPeaks?: Float32Array;
+    hologramBins: Float32Array;
+    hologramBinsMap?: Record<string, Float32Array>;
+  }
 >();
+
+function getHologramAudioMetrics(
+  entry: { hologramBinsMap?: Record<string, Float32Array> },
+  rawBins: Uint8Array,
+  key: string,
+  smoothing: number
+): { bins: Float32Array; avgEnergy: number; bassEnergy: number } {
+  if (!entry.hologramBinsMap) {
+    entry.hologramBinsMap = {};
+  }
+  let buf = entry.hologramBinsMap[key];
+  if (!buf || buf.length !== rawBins.length) {
+    buf = new Float32Array(rawBins.length);
+    entry.hologramBinsMap[key] = buf;
+  }
+  const keep = Math.max(0, Math.min(0.94, smoothing));
+  const take = 1 - keep;
+  let sum = 0;
+  let bassSum = 0;
+  const bassCount = Math.max(1, Math.floor(rawBins.length * 0.25));
+  for (let i = 0; i < rawBins.length; i++) {
+    buf[i] = buf[i] * keep + rawBins[i] * take;
+    const v = buf[i] / 255;
+    sum += v;
+    if (i < bassCount) bassSum += v;
+  }
+  const len = rawBins.length || 1;
+  return {
+    bins: buf,
+    avgEnergy: sum / len,
+    bassEnergy: bassSum / bassCount,
+  };
+}
 
 export interface RenderFrameParams {
   ctx: CanvasRenderingContext2D;
@@ -710,9 +750,9 @@ export function renderMusicVideoFrame({
 
   const baseScale = Math.min(width, height) / 1080;
 
-  // 음악 반응형 비주얼 효과(홀로그램 3종)용 스무딩 오디오 빈 계산
+  // 음악 반응형 비주얼 효과(홀로그램)용 스무딩 오디오 엔트리 준비
   const rawHologramBins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
-  const holoSmooth = Math.max(0, Math.min(0.94, visualEffects?.hologramSmoothing ?? 0.9));
+  const defaultHoloSmooth = Math.max(0, Math.min(0.94, visualEffects?.hologramSmoothing ?? 0.9));
   let holoEntry = spectrumSmoothMap.get(ctx);
   if (!holoEntry || holoEntry.hologramBins.length !== rawHologramBins.length) {
     holoEntry = {
@@ -720,34 +760,19 @@ export function renderMusicVideoFrame({
       samples: holoEntry?.samples ?? new Float32Array(160),
       ledLevels: holoEntry?.ledLevels ?? new Float32Array(24),
       hologramBins: new Float32Array(rawHologramBins.length),
+      hologramBinsMap: holoEntry?.hologramBinsMap,
     };
     spectrumSmoothMap.set(ctx, holoEntry);
-  }
-  const holoKeep = holoSmooth;
-  const holoTake = 1 - holoKeep;
-  for (let i = 0; i < rawHologramBins.length; i++) {
-    holoEntry.hologramBins[i] = holoEntry.hologramBins[i] * holoKeep + rawHologramBins[i] * holoTake;
-  }
-  const hologramBins = holoEntry.hologramBins;
-
-  // 평균 오디오 에너지(0~1) 계산
-  let avgEnergy = 0;
-  let bassEnergy = 0;
-  if (hologramBins.length > 0) {
-    let sum = 0;
-    let bassSum = 0;
-    const bassCount = Math.max(1, Math.floor(hologramBins.length * 0.25));
-    for (let i = 0; i < hologramBins.length; i++) {
-      const v = hologramBins[i] / 255;
-      sum += v;
-      if (i < bassCount) bassSum += v;
-    }
-    avgEnergy = sum / hologramBins.length;
-    bassEnergy = bassSum / bassCount;
   }
 
   // 1-A1. 오로라 구름 띠 (유기적 면 채우기 오로라 홀로그램)
   if (!transparentBackground && visualEffects?.hologramEnabled) {
+    const { bins: hologramBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'hologram',
+      visualEffects.hologramSmoothing ?? defaultHoloSmooth
+    );
     ctx.save();
     const minDim = Math.min(width, height);
     const vol = Math.min(1, avgEnergy * 1.5);
@@ -842,7 +867,12 @@ export function renderMusicVideoFrame({
 
   // 1-A2. 물 속 심해 빛결 (수중 배경 + 볼류메트릭 빛기둥 + 유영하는 물결 면 + 물방울 보케)
   if (!transparentBackground && visualEffects?.underwaterEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'underwater',
+      visualEffects.underwaterSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.5);
@@ -941,7 +971,12 @@ export function renderMusicVideoFrame({
 
   // 1-A3. 우주 성운 네뷸라 (성운 구름 면 + 은하 코어 광채 + 성단 보케)
   if (!transparentBackground && visualEffects?.nebulaEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'nebula',
+      visualEffects.nebulaSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.55);
@@ -1029,7 +1064,12 @@ export function renderMusicVideoFrame({
 
   // 1-A4. 하늘 구름 스카이 클라우드 (대기 그라데이션 + 태양/달 후광 + 입체 뭉게구름 볼륨 면)
   if (!transparentBackground && visualEffects?.skyCloudEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'skyCloud',
+      visualEffects.skyCloudSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.5);
@@ -1114,7 +1154,12 @@ export function renderMusicVideoFrame({
 
   // 1-A5. 몽환 벨벳 플라즈마 (화면 전체를 유체처럼 채우는 유기적 그라데이션 면)
   if (!transparentBackground && visualEffects?.plasmaEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'plasma',
+      visualEffects.plasmaSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.5);
@@ -1176,7 +1221,12 @@ export function renderMusicVideoFrame({
 
   // 1-A6. 스타더스트 보케 입자 (선 없이 부드러운 원형 빛망울 면)
   if (!transparentBackground && visualEffects?.prismParticlesEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'prismParticles',
+      visualEffects.prismParticlesSmoothing ?? defaultHoloSmooth
+    );
     const t = currentTime;
     const spec = getHologramPaletteSpec(visualEffects.prismParticlesPalette ?? 'aurora');
     const particleCount = 42;
@@ -1210,7 +1260,12 @@ export function renderMusicVideoFrame({
 
   // 1-A7. 북극 오로라 커튼 (상단으로 타오르듯 퍼지는 수직 커튼 오로라 면)
   if (!transparentBackground && visualEffects?.auroraCurtainEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'auroraCurtain',
+      visualEffects.auroraCurtainSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.55);
@@ -1309,7 +1364,12 @@ export function renderMusicVideoFrame({
 
   // 1-A8. 눈 내리는 밤 (겨울 밤하늘 + 노래 진행에 따라 소복히 쌓이는 설원 + 착지 후 사라지지 않고 남는 눈송이)
   if (!transparentBackground && visualEffects?.snowNightEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'snowNight',
+      visualEffects.snowNightSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.45);
@@ -1438,7 +1498,12 @@ export function renderMusicVideoFrame({
 
   // 1-A9. 비 내리는 밤 (비 오는 밤하늘 + 물방울 면 + 바닥 물웅덩이 파문 글로우)
   if (!transparentBackground && visualEffects?.rainNightEnabled) {
-    const rawBins = hologramBins;
+    const { bins: rawBins, avgEnergy, bassEnergy } = getHologramAudioMetrics(
+      holoEntry,
+      rawHologramBins,
+      'rainNight',
+      visualEffects.rainNightSmoothing ?? defaultHoloSmooth
+    );
     const minDim = Math.min(width, height);
     const t = currentTime;
     const vol = Math.min(1, avgEnergy * 1.45);
@@ -1793,15 +1858,24 @@ export function renderMusicVideoFrame({
     ctx.restore();
   }
 
-  // 1-C. LED 오디오 레벨메터 (세로 위치 / 기둥 개수 / 기둥 높이 / 기둥 두께 / 투명도 / 부드러운 움직임)
+  // 1-C. LED 오디오 레벨메터 (세로 위치 / 기둥 개수 / 기둥 높이 / 기둥 두께 / 투명도 / 부드러운 움직임 / 색상 / 피크 홀드)
   if (visualEffects?.lyricLedMeterEnabled) {
     const bins = spectrumBins && spectrumBins.length > 0 ? spectrumBins : new Uint8Array(48);
     const cols = Math.max(4, Math.min(16, Math.round(visualEffects.ledMeterColumns ?? 6)));
-    const heightScale = Math.max(0.5, Math.min(2.4, visualEffects.ledMeterHeight ?? 1.0));
+    const heightScale = Math.max(0.5, Math.min(5.0, visualEffects.ledMeterHeight ?? 1.0));
     const thicknessScale = Math.max(0.5, Math.min(2.2, visualEffects.ledMeterThickness ?? 1.0));
     const posYRatio = Math.max(0.08, Math.min(0.92, visualEffects.ledMeterPosY ?? 0.85));
     const opacity = Math.max(0.05, Math.min(1.0, visualEffects.ledMeterOpacity ?? 0.95));
     const ledSmooth = Math.max(0, Math.min(0.92, visualEffects.ledMeterSmoothing ?? 0.68));
+    const rawColor = visualEffects.ledMeterColor ?? 'auto';
+    const customHexMatch = /^#([0-9a-f]{6})$/i.exec(rawColor);
+    const customRgb = customHexMatch
+      ? [
+          parseInt(customHexMatch[1].slice(0, 2), 16),
+          parseInt(customHexMatch[1].slice(2, 4), 16),
+          parseInt(customHexMatch[1].slice(4, 6), 16),
+        ]
+      : null;
 
     let smoothEntry = spectrumSmoothMap.get(ctx);
     if (!smoothEntry) {
@@ -1809,10 +1883,14 @@ export function renderMusicVideoFrame({
         bins: new Float32Array(bins.length),
         samples: new Float32Array(160),
         ledLevels: new Float32Array(24),
+        ledPeaks: new Float32Array(24),
         hologramBins: new Float32Array(bins.length),
       };
       spectrumSmoothMap.set(ctx, smoothEntry);
+    } else if (!smoothEntry.ledPeaks) {
+      smoothEntry.ledPeaks = new Float32Array(24);
     }
+    const ledPeaks = smoothEntry.ledPeaks ?? (smoothEntry.ledPeaks = new Float32Array(24));
 
     const ledRows = 8;
     const ledW = 14 * baseScale * thicknessScale;
@@ -1825,10 +1903,12 @@ export function renderMusicVideoFrame({
     const meterH = ledRows * ledH + (ledRows - 1) * ledGapY + padY * 2;
 
     const meterX = (width - meterW) / 2;
-    const meterY = Math.max(
-      8 * baseScale,
-      Math.min(height - meterH - 8 * baseScale, height * posYRatio - meterH / 2)
+    // 기둥 높이 변경 시 아래쪽 기준점을 고정하여 위로 자라나도록 배치
+    const anchorBottom = Math.min(
+      height - 8 * baseScale,
+      Math.max(meterH + 8 * baseScale, height * posYRatio)
     );
+    const meterY = anchorBottom - meterH;
 
     ctx.save();
     ctx.globalAlpha = opacity;
@@ -1852,13 +1932,31 @@ export function renderMusicVideoFrame({
       const level = prevLevel * ledSmooth + rawLevel * (1 - ledSmooth);
       smoothEntry.ledLevels[b] = level;
 
+      // Peak Hold: 올라갈 때는 즉시 따라가고, 내려올 때는 천천히 부드럽게 하강
+      const prevPeak = ledPeaks[b] ?? 0;
+      const peakLevel = level >= prevPeak ? level : Math.max(level, prevPeak - 0.009);
+      ledPeaks[b] = peakLevel;
+
       const litCount = Math.round(level * ledRows);
       const colX = meterX + padX + b * (ledW + colGapX);
 
       for (let r = 0; r < ledRows; r++) {
         if (r >= litCount) continue; // 꺼진 칸은 그리지 않고 완전 투명 처리
         const rowY = meterY + meterH - padY - (r + 1) * ledH - r * ledGapY;
-        if (r === ledRows - 1) {
+        if (customRgb) {
+          // 사용자 지정 색상에서 Peak 영역(상단)으로 갈수록 #ef4444 (239, 68, 68) 로 자연스럽게 변색
+          const redBlend = r <= 2 ? 0 : Math.pow((r - 2) / (ledRows - 3), 1.15);
+          const cr = Math.round(customRgb[0] + (239 - customRgb[0]) * redBlend);
+          const cg = Math.round(customRgb[1] + (68 - customRgb[1]) * redBlend);
+          const cb = Math.round(customRgb[2] + (68 - customRgb[2]) * redBlend);
+          ctx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+          if (r === ledRows - 1) {
+            ctx.shadowColor = 'rgba(239, 68, 68, 0.85)';
+            ctx.shadowBlur = 6 * baseScale;
+          } else {
+            ctx.shadowBlur = 0;
+          }
+        } else if (r === ledRows - 1) {
           ctx.fillStyle = '#ef4444';
           ctx.shadowColor = 'rgba(239, 68, 68, 0.85)';
           ctx.shadowBlur = 6 * baseScale;
@@ -1875,6 +1973,27 @@ export function renderMusicVideoFrame({
         ctx.beginPath();
         ctx.roundRect(colX, rowY, ledW, ledH, 1.5 * baseScale);
         ctx.fill();
+      }
+
+      // Peak Hold 떨어지는 선 렌더링
+      if (peakLevel > 0.02) {
+        const stackH = ledRows * ledH + (ledRows - 1) * ledGapY;
+        const peakLineH = Math.max(1.5, 2 * baseScale);
+        const peakY = Math.max(
+          meterY + padY - peakLineH,
+          meterY + meterH - padY - peakLevel * stackH - peakLineH
+        );
+        if (customRgb) {
+          const redBlend = Math.min(1, Math.max(0, (peakLevel - 0.3) / 0.65));
+          const cr = Math.round(customRgb[0] + (248 - customRgb[0]) * redBlend);
+          const cg = Math.round(customRgb[1] + (113 - customRgb[1]) * redBlend);
+          const cb = Math.round(customRgb[2] + (113 - customRgb[2]) * redBlend);
+          ctx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+        } else {
+          ctx.fillStyle = peakLevel >= 0.82 ? '#fca5a5' : peakLevel >= 0.6 ? '#fdba74' : '#e2e8f0';
+        }
+        ctx.shadowBlur = 0;
+        ctx.fillRect(colX, peakY, ledW, peakLineH);
       }
     }
     ctx.restore();

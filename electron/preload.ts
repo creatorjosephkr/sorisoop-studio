@@ -42,6 +42,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('dialog:open-background'),
   openBackgroundFiles: (): Promise<OpenedBackgroundFile[]> =>
     ipcRenderer.invoke('dialog:open-backgrounds'),
+  registerBgLibraryFiles: (options?: {
+    mediaType?: 'image' | 'video' | 'all';
+  }): Promise<OpenedBackgroundFile[]> =>
+    ipcRenderer.invoke('bgLibrary:register-files', options),
+  deleteBgLibraryFile: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('bgLibrary:delete-file', filePath),
+  saveMediaFile: (options: {
+    defaultName: string;
+    sourcePath?: string;
+    dataBytes?: Uint8Array;
+  }): Promise<string | null> => ipcRenderer.invoke('dialog:save-media-file', options),
   openProjectFile: (): Promise<{ filePath: string; name: string; content: string } | null> =>
     ipcRenderer.invoke('dialog:open-project'),
   saveTextFileToPath: (filePath: string, content: string): Promise<string | null> =>
